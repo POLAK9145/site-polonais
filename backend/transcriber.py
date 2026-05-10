@@ -78,4 +78,23 @@ def _transcribe_groq(audio_path: str, api_key: str) -> list[dict]:
                 "words": word_list,
             })
 
+    # If Groq returned no word-level timestamps, synthesise them from segment
+    # text so the subtitle generator always has something to work with.
+    has_words = any(seg["words"] for seg in result)
+    if not has_words:
+        for seg in result:
+            seg_words = seg["text"].strip().split()
+            if not seg_words:
+                continue
+            dur = max(seg["end"] - seg["start"], 0.01)
+            word_dur = dur / len(seg_words)
+            seg["words"] = [
+                {
+                    "word": w,
+                    "start": seg["start"] + i * word_dur,
+                    "end": seg["start"] + (i + 1) * word_dur,
+                }
+                for i, w in enumerate(seg_words)
+            ]
+
     return result

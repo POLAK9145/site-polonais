@@ -2,10 +2,27 @@ import json
 import re
 
 
+def _auto_num_clips(segments: list[dict]) -> int:
+    """Decide how many clips to extract based on video duration and topic variety."""
+    if not segments:
+        return 3
+    total_dur = segments[-1]["end"] - segments[0]["start"]
+    # Count distinct themes across the transcript
+    themes = set()
+    for seg in segments:
+        t = _extract_theme(seg["text"])
+        if t != "Contenu général":
+            themes.add(t)
+    by_duration = max(2, min(8, round(total_dur / 150)))   # 1 clip per ~2.5 min
+    by_themes = max(2, min(8, len(themes) + 1))
+    return max(by_duration, by_themes)
+
+
 def analyze_transcript(segments: list[dict], num_clips: int, topics: str, api_key: str) -> list[dict]:
+    actual = num_clips if num_clips > 0 else _auto_num_clips(segments)
     if api_key and api_key.strip():
-        return _analyze_with_claude(segments, num_clips, topics, api_key)
-    return _analyze_heuristic(segments, num_clips, topics)
+        return _analyze_with_claude(segments, actual, topics, api_key)
+    return _analyze_heuristic(segments, actual, topics)
 
 
 def _collect_words_in_range(segments: list[dict], start: float, end: float):
