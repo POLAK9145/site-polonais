@@ -116,6 +116,7 @@ async def _run_pipeline(job_id: str, req: ProcessRequest):
                 "id": i + 1,
                 "filename": clip_filename,
                 "title": seg.get("title", f"Clip {i + 1}"),
+                "theme": seg.get("theme", ""),
                 "reason": seg.get("reason", ""),
                 "start": round(seg["start"], 1),
                 "end": round(seg["end"], 1),

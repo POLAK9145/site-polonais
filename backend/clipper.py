@@ -4,17 +4,35 @@ import os
 from pathlib import Path
 
 
-# Subtitle style: bold white text with thick black outline, bottom-center
-_SUBTITLE_STYLE = (
+# Subtitle styles tuned per platform — short lines, safe margins, no overflow.
+_STYLE_VERTICAL = (
     "FontName=Arial,"
-    "FontSize=22,"
+    "FontSize=14,"
     "Bold=1,"
     "PrimaryColour=&H00FFFFFF,"   # white
     "OutlineColour=&H00000000,"   # black
-    "Outline=3,"
-    "Shadow=2,"
+    "BorderStyle=1,"
+    "Outline=2,"
+    "Shadow=1,"
     "Alignment=2,"                # bottom-center
-    "MarginV=50"
+    "MarginV=120,"                # well above the bottom edge of 1920px frame
+    "MarginL=60,"
+    "MarginR=60"
+)
+
+_STYLE_HORIZONTAL = (
+    "FontName=Arial,"
+    "FontSize=16,"
+    "Bold=1,"
+    "PrimaryColour=&H00FFFFFF,"
+    "OutlineColour=&H00000000,"
+    "BorderStyle=1,"
+    "Outline=2,"
+    "Shadow=1,"
+    "Alignment=2,"
+    "MarginV=40,"
+    "MarginL=40,"
+    "MarginR=40"
 )
 
 
@@ -37,8 +55,8 @@ def download_video(url: str, output_path: str) -> str:
 
 
 def _generate_srt(words: list[dict], clip_start: float, srt_path: str):
-    """Write an SRT file with ~6-word chunks for readable subtitles."""
-    CHUNK = 6
+    """Write an SRT file with ~4-word chunks: short lines that fit on screen."""
+    CHUNK = 4
 
     def fmt(sec: float) -> str:
         t = max(0.0, sec - clip_start)
@@ -67,7 +85,7 @@ def _build_video_filter(platform: str, srt_path: str) -> str:
             f"[0:v]{bg}[bg];"
             f"[0:v]{fg}[fg];"
             f"[bg][fg]overlay=(W-w)/2:(H-h)/2,"
-            f"subtitles='{safe_path}':force_style='{_SUBTITLE_STYLE}'"
+            f"subtitles='{safe_path}':force_style='{_STYLE_VERTICAL}'"
             f"[vout]"
         )
         return vf, True  # complex filter, output pad named [vout]
@@ -75,7 +93,7 @@ def _build_video_filter(platform: str, srt_path: str) -> str:
         # Twitter/X: keep aspect ratio, scale to 1280p max
         vf = (
             f"scale='min(1280,iw)':-2,"
-            f"subtitles='{safe_path}':force_style='{_SUBTITLE_STYLE}'"
+            f"subtitles='{safe_path}':force_style='{_STYLE_HORIZONTAL}'"
         )
         return vf, False  # simple -vf
 

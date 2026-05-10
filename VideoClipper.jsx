@@ -187,7 +187,13 @@ function ClipCard({ clip, platform }) {
           <span style={durationBadgeStyle}>{fmtDuration(clip.duration)}</span>
         </div>
 
-        <p style={{ margin: '6px 0 0', fontSize: 12, color: C.muted, lineHeight: 1.4 }}>
+        {clip.theme && (
+          <div style={{ marginTop: 8 }}>
+            <span style={themeBadgeStyle}>🏷 {clip.theme}</span>
+          </div>
+        )}
+
+        <p style={{ margin: '8px 0 0', fontSize: 12, color: C.muted, lineHeight: 1.4 }}>
           {clip.reason}
         </p>
 
@@ -654,6 +660,17 @@ const durationBadgeStyle = {
   fontSize: 11,
   fontWeight: 700,
   whiteSpace: 'nowrap',
+};
+
+const themeBadgeStyle = {
+  display: 'inline-block',
+  padding: '3px 10px',
+  background: 'rgba(139,92,246,0.15)',
+  border: `1px solid rgba(139,92,246,0.3)`,
+  color: '#a78bfa',
+  borderRadius: 20,
+  fontSize: 11,
+  fontWeight: 600,
 };
 
 const downloadBtnStyle = {
