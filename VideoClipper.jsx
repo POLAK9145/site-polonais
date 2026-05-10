@@ -239,6 +239,7 @@ function ClipCard({ clip, platform }) {
 export default function VideoClipper() {
   const [url, setUrl] = useState('');
   const [platform, setPlatform] = useState('tiktok');
+  const [numClips, setNumClips] = useState(0);
   const [topics, setTopics] = useState('');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('anthropic_key') || '');
   const [groqKey, setGroqKey] = useState(() => localStorage.getItem('groq_key') || '');
@@ -288,7 +289,7 @@ export default function VideoClipper() {
         body: JSON.stringify({
           url: url.trim(),
           platform,
-          num_clips: 0,
+          num_clips: numClips,
           topics,
           api_key: apiKey,
           groq_key: groqKey,
@@ -377,6 +378,31 @@ export default function VideoClipper() {
                 ? 'Format vertical 9:16 — fond flouté automatique'
                 : 'Format horizontal — aspect ratio original préservé'}
             </p>
+          </div>
+
+          {/* Number of clips */}
+          <div style={fieldStyle}>
+            <label style={labelStyle}>
+              Nombre de clips —{' '}
+              <strong style={{ color: C.accent }}>
+                {numClips === 0 ? '✨ Auto' : numClips}
+              </strong>
+            </label>
+            <input
+              type="range"
+              min={0} max={10}
+              value={numClips}
+              onChange={e => setNumClips(Number(e.target.value))}
+              style={{ width: '100%', accentColor: C.accent }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: C.muted }}>
+              <span>Auto</span><span>10</span>
+            </div>
+            {numClips === 0 && (
+              <p style={{ margin: 0, fontSize: 11, color: C.accent }}>
+                L'IA analysera la vidéo et décidera du nombre optimal de clips selon les thèmes abordés.
+              </p>
+            )}
           </div>
 
           {/* Topics */}
