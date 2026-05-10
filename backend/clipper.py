@@ -1,4 +1,5 @@
 import subprocess
+import sys
 import os
 from pathlib import Path
 
@@ -21,7 +22,7 @@ def download_video(url: str, output_path: str) -> str:
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
     out_file = f"{output_path}.mp4"
     cmd = [
-        "yt-dlp",
+        sys.executable, "-m", "yt_dlp",
         "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best[height<=1080]",
         "--merge-output-format", "mp4",
         "-o", out_file,
