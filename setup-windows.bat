@@ -6,89 +6,106 @@ cd /d "%~dp0"
 
 echo.
 echo ════════════════════════════════════════════════════
-echo  📦 Installation de ClipAI
+echo  ClipAI - Installation
 echo ════════════════════════════════════════════════════
 echo.
 
 REM Vérifier Python
-echo [1/4] Vérification de Python...
+echo [1/4] Verification de Python...
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo ❌ Python n'est pas installé.
-    echo    Télécharge-le ici : https://www.python.org/downloads/
-    echo    IMPORTANT : coche "Add Python to PATH" pendant l'installation.
+    echo.
+    echo ERREUR : Python n'est pas installe.
+    echo.
+    echo  1. Va sur https://www.python.org/downloads/
+    echo  2. Clique sur le bouton "Download Python"
+    echo  3. Lance l'installeur
+    echo  4. IMPORTANT : coche "Add Python to PATH" en bas !
+    echo  5. Clique "Install Now"
+    echo  6. Redemarre ce fichier quand c'est fait.
+    echo.
     pause
     exit /b 1
 )
 python --version
-echo ✅ Python OK
+echo OK
 echo.
 
 REM Vérifier Node
-echo [2/4] Vérification de Node.js...
+echo [2/4] Verification de Node.js...
 node --version >nul 2>&1
 if errorlevel 1 (
-    echo ❌ Node.js n'est pas installé.
-    echo    Télécharge-le ici : https://nodejs.org/
+    echo.
+    echo ERREUR : Node.js n'est pas installe.
+    echo.
+    echo  1. Va sur https://nodejs.org/
+    echo  2. Clique sur le bouton "LTS" (a gauche)
+    echo  3. Lance l'installeur et clique "Suivant" jusqu'au bout
+    echo  4. Redemarre ce fichier quand c'est fait.
+    echo.
     pause
     exit /b 1
 )
 node --version
-echo ✅ Node.js OK
+echo OK
 echo.
 
 REM Vérifier ffmpeg
-echo [3/4] Vérification de ffmpeg...
+echo [3/4] Verification de ffmpeg...
 ffmpeg -version >nul 2>&1
 if errorlevel 1 (
-    echo ⚠️  ffmpeg n'est pas installé.
-    echo    Tentative d'installation via winget...
-    winget install -e --id Gyan.FFmpeg --accept-source-agreements --accept-package-agreements
+    echo ffmpeg non trouve. Tentative d'installation automatique...
+    winget install -e --id Gyan.FFmpeg --accept-source-agreements --accept-package-agreements 2>nul
+    ffmpeg -version >nul 2>&1
     if errorlevel 1 (
-        echo ❌ Installation automatique échouée.
-        echo    Installe ffmpeg manuellement :
-        echo      1. Va sur https://www.gyan.dev/ffmpeg/builds/
-        echo      2. Télécharge "ffmpeg-release-essentials.zip"
-        echo      3. Extrais le dossier dans C:\ffmpeg
-        echo      4. Ajoute C:\ffmpeg\bin au PATH système
+        echo.
+        echo ATTENTION : ffmpeg n'a pas pu etre installe automatiquement.
+        echo.
+        echo Installe-le manuellement :
+        echo  1. Va sur https://www.gyan.dev/ffmpeg/builds/
+        echo  2. Clique sur "ffmpeg-release-essentials.zip"
+        echo  3. Extrais le ZIP dans C:\ffmpeg
+        echo  4. Dans le menu Demarrer, cherche "Variables d'environnement"
+        echo  5. Edite la variable "Path" et ajoute : C:\ffmpeg\bin
+        echo  6. Redemarre l'ordinateur et relance ce fichier.
+        echo.
         pause
         exit /b 1
     )
-    echo ⚠️  Redémarre l'invite de commandes après installation pour que ffmpeg soit reconnu.
 )
-echo ✅ ffmpeg OK
+echo OK
 echo.
 
-REM Installer dépendances Python
-echo [4/4] Installation des dépendances...
+REM Installer paquets Python
+echo [4/4] Installation des paquets Python et Node...
+echo  (peut prendre 2-5 minutes, ne ferme pas la fenetre)
 echo.
-echo  → Python (peut prendre quelques minutes)...
+
 cd backend
-python -m pip install --upgrade pip
+python -m pip install --upgrade pip --quiet
 python -m pip install -r requirements.txt
 if errorlevel 1 (
-    echo ❌ Échec de l'installation des paquets Python.
+    echo.
+    echo ERREUR lors de l'installation des paquets Python.
+    echo Copie le message d'erreur ci-dessus et envoie-le pour de l'aide.
     pause
     exit /b 1
 )
 cd ..
-echo ✅ Paquets Python installés
-echo.
 
-echo  → Node.js...
-call npm install
+call npm install --silent
 if errorlevel 1 (
-    echo ❌ Échec de l'installation des paquets Node.
+    echo.
+    echo ERREUR lors de l'installation des paquets Node.
     pause
     exit /b 1
 )
-echo ✅ Paquets Node installés
-echo.
 
+echo.
 echo ════════════════════════════════════════════════════
-echo  🎉 Installation terminée !
+echo  Installation terminee !
 echo ════════════════════════════════════════════════════
 echo.
-echo  Pour lancer l'app : double-clique sur start-windows.bat
+echo  Lance start-windows.bat pour demarrer l'application.
 echo.
 pause

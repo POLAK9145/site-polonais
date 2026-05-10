@@ -33,30 +33,55 @@ function fmtTimestamp(secs) {
 
 /* ─── sub-components ────────────────────────────────────────────── */
 
-function SettingsModal({ apiKey, onSave, onClose }) {
-  const [draft, setDraft] = useState(apiKey);
+function SettingsModal({ groqKey, apiKey, onSave, onClose }) {
+  const [draftGroq, setDraftGroq] = useState(groqKey);
+  const [draftAnthropic, setDraftAnthropic] = useState(apiKey);
   return (
     <div style={overlayStyle} onClick={onClose}>
       <div style={modalStyle} onClick={e => e.stopPropagation()}>
-        <h3 style={{ margin: '0 0 12px', color: C.text, fontSize: 16 }}>
-          🔑 Clé API Anthropic
+        <h3 style={{ margin: '0 0 16px', color: C.text, fontSize: 16 }}>
+          🔑 Clés API
         </h3>
-        <p style={{ margin: '0 0 16px', color: C.muted, fontSize: 13, lineHeight: 1.5 }}>
-          Pour une analyse intelligente des meilleurs moments, entre ta clé API Anthropic
-          (obtenue sur <strong style={{ color: C.accent }}>console.anthropic.com</strong>).
-          Sans clé, l'outil sélectionne les passages par densité de contenu.
-        </p>
-        <input
-          type="password"
-          placeholder="sk-ant-api03-…"
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          style={inputStyle}
-          autoFocus
-        />
-        <div style={{ display: 'flex', gap: 8, marginTop: 12, justifyContent: 'flex-end' }}>
+
+        {/* Groq — required */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ ...labelStyle, display: 'block', marginBottom: 6 }}>
+            Groq <span style={{ color: C.error, fontSize: 11 }}>OBLIGATOIRE</span>
+            <span style={{ color: C.muted, fontWeight: 400 }}> — pour la transcription</span>
+          </label>
+          <p style={{ margin: '0 0 8px', color: C.muted, fontSize: 12, lineHeight: 1.5 }}>
+            Gratuit sur <strong style={{ color: C.accent }}>console.groq.com</strong> → "Create API Key". Aucune CB requise.
+          </p>
+          <input
+            type="password"
+            placeholder="gsk_…"
+            value={draftGroq}
+            onChange={e => setDraftGroq(e.target.value)}
+            style={inputStyle}
+            autoFocus
+          />
+        </div>
+
+        {/* Anthropic — optional */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ ...labelStyle, display: 'block', marginBottom: 6 }}>
+            Anthropic <span style={{ color: C.muted, fontWeight: 400, fontSize: 11 }}>optionnel — pour l'analyse IA</span>
+          </label>
+          <p style={{ margin: '0 0 8px', color: C.muted, fontSize: 12, lineHeight: 1.5 }}>
+            Sur <strong style={{ color: C.accent }}>console.anthropic.com</strong>. Sans clé, les clips sont choisis par densité de contenu.
+          </p>
+          <input
+            type="password"
+            placeholder="sk-ant-api03-…"
+            value={draftAnthropic}
+            onChange={e => setDraftAnthropic(e.target.value)}
+            style={inputStyle}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={btnSecondaryStyle}>Annuler</button>
-          <button onClick={() => { onSave(draft); onClose(); }} style={btnPrimaryStyle}>
+          <button onClick={() => { onSave(draftGroq, draftAnthropic); onClose(); }} style={btnPrimaryStyle}>
             Enregistrer
           </button>
         </div>
@@ -211,14 +236,17 @@ export default function VideoClipper() {
   const [numClips, setNumClips] = useState(5);
   const [topics, setTopics] = useState('');
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('anthropic_key') || '');
+  const [groqKey, setGroqKey] = useState(() => localStorage.getItem('groq_key') || '');
   const [showSettings, setShowSettings] = useState(false);
-  const [job, setJob] = useState(null);   // { status, progress, message, clips }
+  const [job, setJob] = useState(null);
   const [jobId, setJobId] = useState(null);
   const pollRef = useRef(null);
 
-  const saveApiKey = useCallback((key) => {
-    setApiKey(key);
-    localStorage.setItem('anthropic_key', key);
+  const saveKeys = useCallback((newGroq, newAnthropic) => {
+    setGroqKey(newGroq);
+    setApiKey(newAnthropic);
+    localStorage.setItem('groq_key', newGroq);
+    localStorage.setItem('anthropic_key', newAnthropic);
   }, []);
 
   const stopPolling = () => {
@@ -258,6 +286,7 @@ export default function VideoClipper() {
           num_clips: numClips,
           topics,
           api_key: apiKey,
+          groq_key: groqKey,
         }),
       });
       const { job_id } = await res.json();
@@ -283,8 +312,9 @@ export default function VideoClipper() {
     <div style={pageStyle}>
       {showSettings && (
         <SettingsModal
+          groqKey={groqKey}
           apiKey={apiKey}
-          onSave={saveApiKey}
+          onSave={saveKeys}
           onClose={() => setShowSettings(false)}
         />
       )}
@@ -304,7 +334,7 @@ export default function VideoClipper() {
           style={settingsBtnStyle}
           title="Configurer la clé API"
         >
-          ⚙ {apiKey ? <span style={{ color: C.success, fontSize: 10 }}>●</span> : <span style={{ color: C.warning, fontSize: 10 }}>●</span>} API
+          ⚙ {groqKey ? <span style={{ color: C.success, fontSize: 10 }}>●</span> : <span style={{ color: C.error, fontSize: 10 }}>●</span>} API
         </button>
       </div>
 
@@ -375,16 +405,20 @@ export default function VideoClipper() {
             />
           </div>
 
-          {!apiKey && (
+          {!groqKey && (
+            <div style={{ ...warningBoxStyle, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', color: '#fca5a5' }}>
+              <strong>⚠️ Clé Groq manquante.</strong> La transcription ne fonctionnera pas sans elle.{' '}
+              <span onClick={() => setShowSettings(true)} style={{ color: C.accent, cursor: 'pointer', textDecoration: 'underline' }}>
+                Configurer maintenant →
+              </span>
+            </div>
+          )}
+          {groqKey && !apiKey && (
             <div style={warningBoxStyle}>
-              <strong>⚡ Mode sans clé API :</strong> sélection par densité de contenu.{' '}
-              <span
-                onClick={() => setShowSettings(true)}
-                style={{ color: C.accent, cursor: 'pointer', textDecoration: 'underline' }}
-              >
-                Ajouter une clé Anthropic
-              </span>{' '}
-              pour une analyse vraiment intelligente.
+              <strong>⚡ Sans clé Anthropic :</strong> sélection par densité de contenu.{' '}
+              <span onClick={() => setShowSettings(true)} style={{ color: C.accent, cursor: 'pointer', textDecoration: 'underline' }}>
+                Ajouter →
+              </span>
             </div>
           )}
 

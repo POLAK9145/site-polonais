@@ -35,7 +35,8 @@ class ProcessRequest(BaseModel):
     platform: str = "tiktok"   # tiktok | reels | shorts | twitter
     num_clips: int = 5
     topics: str = ""
-    api_key: str = ""
+    api_key: str = ""       # Anthropic key (optional, for smart analysis)
+    groq_key: str = ""      # Groq key (required for transcription)
 
 
 @app.post("/api/process")
@@ -80,8 +81,8 @@ async def _run_pipeline(job_id: str, req: ProcessRequest):
         )
 
         # ── 2. Transcribe ────────────────────────────────────────────────────
-        _update(job_id, progress=20, message="🎙️  Transcription audio (peut prendre quelques minutes)…")
-        segments = await asyncio.to_thread(transcribe_video, video_path)
+        _update(job_id, progress=20, message="🎙️  Transcription audio en cours…")
+        segments = await asyncio.to_thread(transcribe_video, video_path, req.groq_key)
 
         if not segments:
             raise RuntimeError("La transcription n'a produit aucun résultat. La vidéo contient-elle de l'audio ?")
