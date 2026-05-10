@@ -32,6 +32,13 @@ def transcribe_video(video_path: str, groq_api_key: str = "") -> list[dict]:
             os.remove(audio_path)
 
 
+def _g(obj, key, default=None):
+    """Get attribute or dict key — Groq returns mixed types."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return getattr(obj, key, default)
+
+
 def _transcribe_groq(audio_path: str, api_key: str) -> list[dict]:
     from groq import Groq
 
@@ -45,34 +52,30 @@ def _transcribe_groq(audio_path: str, api_key: str) -> list[dict]:
             timestamp_granularities=["word", "segment"],
         )
 
-    # Build segments from Groq response
-    groq_words = getattr(response, "words", []) or []
-    groq_segments = getattr(response, "segments", []) or []
+    groq_words = _g(response, "words", []) or []
+    groq_segments = _g(response, "segments", []) or []
 
-    # Index words by time for fast lookup
     word_list = [
-        {"word": w.word, "start": w.start, "end": w.end}
+        {"word": _g(w, "word", ""), "start": float(_g(w, "start", 0)), "end": float(_g(w, "end", 0))}
         for w in groq_words
     ]
 
     result = []
     for seg in groq_segments:
-        start, end = seg.start, seg.end
+        start = float(_g(seg, "start", 0))
+        end = float(_g(seg, "end", 0))
+        text = (_g(seg, "text", "") or "").strip()
         words_in_seg = [w for w in word_list if w["start"] >= start - 0.05 and w["end"] <= end + 0.05]
-        result.append({
-            "start": start,
-            "end": end,
-            "text": seg.text.strip(),
-            "words": words_in_seg,
-        })
+        result.append({"start": start, "end": end, "text": text, "words": words_in_seg})
 
-    # If no segments but we have text, make one big segment
-    if not result and hasattr(response, "text") and response.text:
-        result.append({
-            "start": 0.0,
-            "end": getattr(response, "duration", 0.0),
-            "text": response.text.strip(),
-            "words": word_list,
-        })
+    if not result:
+        text = (_g(response, "text", "") or "").strip()
+        if text:
+            result.append({
+                "start": 0.0,
+                "end": float(_g(response, "duration", 0) or 0),
+                "text": text,
+                "words": word_list,
+            })
 
     return result
