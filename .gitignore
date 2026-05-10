@@ -1,0 +1,7 @@
+node_modules/
+backend/clips/
+backend/downloads/
+*.pyc
+__pycache__/
+.env
+package-lock.json
