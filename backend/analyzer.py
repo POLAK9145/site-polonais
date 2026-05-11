@@ -63,15 +63,44 @@ def _parse_llm_json(raw: str) -> list[dict]:
     return json.loads(raw)
 
 
+def _snap_to_segment_boundaries(start: float, end: float, segments: list[dict]) -> tuple[float, float]:
+    """Move start/end to the nearest Groq segment boundary so clips never cut mid-sentence."""
+    # Snap start: find the segment that contains start, use its beginning
+    snapped_start = start
+    for seg in segments:
+        if seg["start"] <= start <= seg["end"]:
+            snapped_start = seg["start"]
+            break
+    else:
+        # start is in a gap — pick the closest segment start within 4 s
+        closest = min(segments, key=lambda s: abs(s["start"] - start), default=None)
+        if closest and abs(closest["start"] - start) <= 4.0:
+            snapped_start = closest["start"]
+
+    # Snap end: find the segment that contains end, use its finish
+    snapped_end = end
+    for seg in reversed(segments):
+        if seg["start"] <= end <= seg["end"]:
+            snapped_end = seg["end"]
+            break
+    else:
+        closest = min(segments, key=lambda s: abs(s["end"] - end), default=None)
+        if closest and abs(closest["end"] - end) <= 4.0:
+            snapped_end = closest["end"]
+
+    return snapped_start, snapped_end
+
+
 def _build_result(s: dict, segments: list[dict]) -> dict:
     start, end = float(s["start"]), float(s["end"])
+    start, end = _snap_to_segment_boundaries(start, end, segments)
     words, text = _collect_words_in_range(segments, start, end)
     return {
         "title":            s.get("title", "Clip"),
         "theme":            s.get("theme", "Contenu général"),
         "reason":           s.get("reason", ""),
         "caption":          s.get("caption", ""),
-        "emphasized_words": s.get("emphasized_words", []),
+        "emphasized_words": [],   # determined by clipper heuristic, not the LLM
         "start":            start,
         "end":              end,
         "text":             text,
@@ -103,13 +132,10 @@ Réponds UNIQUEMENT avec du JSON valide, sans texte autour :
     "theme": "Thème en 2-4 mots",
     "reason": "Ce que ce passage apporte et pourquoi il engage (1-2 phrases)",
     "caption": "Texte de post TikTok/Instagram prêt à coller (1-3 lignes + 5 hashtags pertinents)",
-    "emphasized_words": ["mot1", "mot2", "mot3"],
     "start": <secondes>,
     "end": <secondes>
   }}
-]
-
-Pour emphasized_words : choisis 2-4 mots/chiffres qui méritent d'être mis en valeur visuellement dans les sous-titres (mots forts, chiffres, mots-clés du message principal)."""
+]"""
 
 
 def _analyze_with_groq_llm(segments: list[dict], num_clips: int, topics: str, groq_key: str) -> list[dict]:
@@ -199,20 +225,18 @@ def _extract_theme(text: str) -> str:
 
 
 def _heuristic_emphasis(clip_words: list[dict]) -> list[str]:
-    """Find impactful words to emphasise without an LLM."""
+    """Highlight only numbers and ALL-CAPS words — reliable signals, no false positives."""
     found = set()
     for w in clip_words:
         text = (w.get("word") or "").strip()
         clean = re.sub(r"[^\w]", "", text.lower())
         if not clean:
             continue
-        if len(text) >= 3 and text.replace("'", "").isupper():   # ALL CAPS
+        if re.search(r"\d", text):                          # contains a number
             found.add(clean)
-        elif re.search(r"\d", text):                              # contains a number
+        elif len(text) >= 3 and text.replace("'", "").isupper():  # ALL CAPS ≥ 3 chars
             found.add(clean)
-        elif clean in _IMPACTFUL:                                 # impactful keyword
-            found.add(clean)
-        if len(found) >= 4:
+        if len(found) >= 5:
             break
     return list(found)
 

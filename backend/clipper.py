@@ -182,17 +182,13 @@ def extract_clip(
 
     vf, is_complex = _build_video_filter(platform, sub_path)
 
-    # Hybrid seek: fast pre-seek to a few seconds before the cut, then
-    # accurate fine-seek after -i. Fixes the keyframe-rounding bug that
-    # was making clips start a couple seconds early and desync subtitles.
-    fast_seek = max(0.0, start - 4.0)
-    fine_seek = start - fast_seek
-
+    # -ss after -i = frame-accurate seek (slower but subtitles stay in sync).
+    # The hybrid pre-seek approach caused keyframe-rounding errors that
+    # shifted the clip start by up to 2 s and desynchronised every subtitle.
     cmd = [
         "ffmpeg", "-y",
-        "-ss", f"{fast_seek:.3f}",
         "-i", video_path,
-        "-ss", f"{fine_seek:.3f}",
+        "-ss", f"{start:.3f}",
         "-t", f"{duration:.3f}",
     ]
     if is_complex:
