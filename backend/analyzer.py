@@ -91,16 +91,21 @@ def _snap_to_segment_boundaries(start: float, end: float, segments: list[dict]) 
     return snapped_start, snapped_end
 
 
-def _build_result(s: dict, segments: list[dict]) -> dict:
+_MIN_CLIP_DURATION = 25.0  # clips shorter than this after snapping are rejected
+
+
+def _build_result(s: dict, segments: list[dict]) -> dict | None:
     start, end = float(s["start"]), float(s["end"])
     start, end = _snap_to_segment_boundaries(start, end, segments)
+    if end - start < _MIN_CLIP_DURATION:
+        return None
     words, text = _collect_words_in_range(segments, start, end)
     return {
         "title":            s.get("title", "Clip"),
         "theme":            s.get("theme", "Contenu général"),
         "reason":           s.get("reason", ""),
         "caption":          s.get("caption", ""),
-        "emphasized_words": [],   # determined by clipper heuristic, not the LLM
+        "emphasized_words": [],
         "start":            start,
         "end":              end,
         "text":             text,
@@ -116,21 +121,30 @@ Tu es un expert en création de contenu viral (TikTok, Reels, Shorts).
 Transcription de la vidéo avec timestamps :
 {transcript}
 
-Identifie exactement {n} passages pour des clips viraux, bien répartis sur toute la vidéo.{topics_line}
+MISSION : Identifier les {n} meilleurs passages pour des clips viraux.{topics_line}
 
-Critères :
-- Passage auto-suffisant (compréhensible sans contexte)
-- Durée 30–90 secondes
-- Début fort (hook accrocheur), fin naturelle sur une phrase complète
-- Contenu engageant : insight surprenant, conseil pratique, anecdote, émotion forte
-- Les {n} clips doivent couvrir des sujets DIFFÉRENTS
+CRITÈRES OBLIGATOIRES — chaque clip doit respecter TOUS ces points :
+• Durée entre 30 et 90 secondes
+• Auto-suffisant : compréhensible sans avoir vu le reste de la vidéo
+• Début accrocheur : hook fort, chiffre marquant, question intrigante, ou révélation
+• Fin naturelle : termine sur une phrase ou une idée complète, jamais coupé
+• Substance réelle : insight original, conseil actionnable, anecdote mémorable, statistique surprenante
+
+EXCLURE ABSOLUMENT :
+• Transitions, salutations, introductions génériques ("Bienvenue", "Dans cette vidéo…")
+• Passages sans information concrète ou mémorable
+• Contenu trop vague, trop général, qui ne dit rien de précis
+• Répétitions d'idées déjà couvertes par un autre clip
+
+RÈGLE IMPORTANTE : si la vidéo n'a pas {n} passages de vraie qualité,
+retourne MOINS de clips — il vaut mieux 2 clips excellents que 5 médiocres.
 
 Réponds UNIQUEMENT avec du JSON valide, sans texte autour :
 [
   {{
     "title": "Titre court et accrocheur (max 55 caractères)",
     "theme": "Thème en 2-4 mots",
-    "reason": "Ce que ce passage apporte et pourquoi il engage (1-2 phrases)",
+    "reason": "Ce que ce passage apporte concrètement et pourquoi ça engage (1-2 phrases)",
     "caption": "Texte de post TikTok/Instagram prêt à coller (1-3 lignes + 5 hashtags pertinents)",
     "start": <secondes>,
     "end": <secondes>
@@ -160,7 +174,8 @@ def _analyze_with_groq_llm(segments: list[dict], num_clips: int, topics: str, gr
         max_tokens=3000,
     )
     raw = response.choices[0].message.content
-    return [_build_result(s, segments) for s in _parse_llm_json(raw)]
+    built = [_build_result(s, segments) for s in _parse_llm_json(raw)]
+    return [r for r in built if r is not None]
 
 
 # ── Anthropic Claude analysis ─────────────────────────────────────────────────
@@ -186,7 +201,8 @@ def _analyze_with_claude(segments: list[dict], num_clips: int, topics: str, api_
         messages=[{"role": "user", "content": prompt}],
     )
     raw = response.content[0].text
-    return [_build_result(s, segments) for s in _parse_llm_json(raw)]
+    built = [_build_result(s, segments) for s in _parse_llm_json(raw)]
+    return [r for r in built if r is not None]
 
 
 # ── Heuristic fallback (no LLM) ───────────────────────────────────────────────
