@@ -261,12 +261,19 @@ function ClipCard({ clip, platform }) {
   );
 }
 
+const AI_MODE_LABEL = {
+  claude:    { label: '🧠 Claude Sonnet 4.6',    color: '#a78bfa' },
+  llama:     { label: '🦙 Llama 3.3 70B (Groq)', color: '#22c55e' },
+  heuristic: { label: '📊 Mode heuristique',     color: '#fbbf24' },
+};
+
 function ResultsView({ job, jobId, platform, onReset }) {
   const [groupByTheme, setGroupByTheme] = useState(true);
   const [activeTheme, setActiveTheme] = useState('all');
 
   const clips = job.clips || [];
   const themes = [...new Set(clips.map(c => c.theme).filter(Boolean))];
+  const aiMode = AI_MODE_LABEL[job.ai_mode] || null;
 
   const filteredClips = activeTheme === 'all'
     ? clips
@@ -291,6 +298,21 @@ function ResultsView({ job, jobId, platform, onReset }) {
           <p style={{ margin: '4px 0 0', fontSize: 13, color: C.muted }}>
             Aperçu, puis télécharge les clips qui t'intéressent
           </p>
+          {aiMode && (
+            <div style={{
+              display: 'inline-block',
+              marginTop: 8,
+              padding: '3px 10px',
+              background: 'rgba(255,255,255,0.04)',
+              border: `1px solid ${aiMode.color}40`,
+              color: aiMode.color,
+              borderRadius: 12,
+              fontSize: 11,
+              fontWeight: 700,
+            }}>
+              Analysé par : {aiMode.label}
+            </div>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={handleDownloadAll} style={btnPrimaryStyle}>

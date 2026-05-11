@@ -10,23 +10,18 @@ def analyze_transcript(
     topics: str,
     api_key: str,           # Anthropic key (optional)
     groq_key: str = "",     # Groq key — used both for Whisper and LLM analysis
-) -> list[dict]:
+) -> tuple[list[dict], str]:
+    """Return (clips, mode) where mode is 'claude' | 'llama' | 'heuristic'."""
     actual = num_clips if num_clips > 0 else _auto_num_clips(segments)
 
     if api_key and api_key.strip():
-        try:
-            return _analyze_with_claude(segments, actual, topics, api_key)
-        except Exception as e:
-            raise RuntimeError(f"Erreur Claude : {e}")
+        return _analyze_with_claude(segments, actual, topics, api_key), "claude"
 
     if groq_key and groq_key.strip():
-        try:
-            return _analyze_with_groq_llm(segments, actual, topics, groq_key)
-        except Exception:
-            # LLM failed (rate limit, bad JSON…) — fall back to heuristic
-            pass
+        # No silent fallback: if Llama fails, the error surfaces in the UI
+        return _analyze_with_groq_llm(segments, actual, topics, groq_key), "llama"
 
-    return _analyze_heuristic(segments, actual, topics)
+    return _analyze_heuristic(segments, actual, topics), "heuristic"
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────

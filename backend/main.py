@@ -141,9 +141,15 @@ async def _run_pipeline(job_id: str, req: ProcessRequest):
             raise RuntimeError("La transcription n'a produit aucun résultat. La vidéo contient-elle de l'audio ?")
 
         # ── 3. Analyze ──────────────────────────────────────────────────
-        analyser_label = "🧠  Analyse intelligente par Claude…" if req.api_key.strip() else "📊  Analyse par densité de contenu…"
+        if req.api_key.strip():
+            analyser_label = "🧠  Analyse intelligente par Claude…"
+        elif req.groq_key.strip():
+            analyser_label = "🦙  Analyse intelligente par Llama 3.3 70B…"
+        else:
+            analyser_label = "📊  Analyse par densité de contenu…"
         _update(job_id, progress=55, message=analyser_label)
-        clip_data = await asyncio.to_thread(
+
+        clip_data, ai_mode = await asyncio.to_thread(
             analyze_transcript, segments, req.num_clips, req.topics, req.api_key, req.groq_key
         )
 
@@ -184,7 +190,14 @@ async def _run_pipeline(job_id: str, req: ProcessRequest):
                 "transcript": seg.get("text", ""),
             })
 
-        _update(job_id, status="done", progress=100, message=f"✅  {total} clip(s) prêt(s) !", clips=clips)
+        _update(
+            job_id,
+            status="done",
+            progress=100,
+            message=f"✅  {total} clip(s) prêt(s) !",
+            clips=clips,
+            ai_mode=ai_mode,
+        )
 
         # Clean up the source download to save disk space
         try:
@@ -199,6 +212,10 @@ async def _run_pipeline(job_id: str, req: ProcessRequest):
             msg = "Clé Groq invalide ou expirée. Vérifie-la dans ⚙."
         elif "rate limit" in msg.lower() or "429" in msg:
             msg = "Limite Groq atteinte. Réessaie dans quelques minutes."
+        elif "model" in msg.lower() and "decommissioned" in msg.lower():
+            msg = "Modèle Llama indisponible. Réessaie ou contacte le support."
+        elif "json" in msg.lower() and ("decode" in msg.lower() or "expecting" in msg.lower()):
+            msg = "Llama a renvoyé une réponse invalide. Réessaie."
         elif "Téléchargement échoué" in msg and "Private" in msg:
             msg = "Cette vidéo est privée ou indisponible."
         _update(job_id, status="error", message=msg, error=str(exc))
