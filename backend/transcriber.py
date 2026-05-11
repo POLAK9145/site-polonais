@@ -65,7 +65,7 @@ def _transcribe_groq(audio_path: str, api_key: str) -> list[dict]:
         start = float(_g(seg, "start", 0))
         end = float(_g(seg, "end", 0))
         text = (_g(seg, "text", "") or "").strip()
-        words_in_seg = [w for w in word_list if w["start"] >= start - 0.05 and w["end"] <= end + 0.05]
+        words_in_seg = [w for w in word_list if w["start"] >= start - 0.05 and w["start"] < end + 0.05]
         result.append({"start": start, "end": end, "text": text, "words": words_in_seg})
 
     if not result:

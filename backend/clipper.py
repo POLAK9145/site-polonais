@@ -129,7 +129,9 @@ def _generate_ass(words: list[dict], clip_start: float, clip_duration: float, as
                     t_end_abs = next_start - 0.05
 
             t_start_abs = max(0.0, t_start_abs)
-            t_end_abs = min(clip_duration, t_end_abs)
+            t_end_abs = min(clip_duration + 0.5, t_end_abs)  # small buffer — prevents cutoff on last words
+            if t_start_abs >= clip_duration:
+                continue
             if t_end_abs <= t_start_abs:
                 continue
 

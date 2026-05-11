@@ -72,9 +72,9 @@ def _snap_to_segment_boundaries(start: float, end: float, segments: list[dict]) 
             snapped_start = seg["start"]
             break
     else:
-        # start is in a gap — pick the closest segment start within 4 s
+        # start is in a gap — always snap to the nearest segment start
         closest = min(segments, key=lambda s: abs(s["start"] - start), default=None)
-        if closest and abs(closest["start"] - start) <= 4.0:
+        if closest:
             snapped_start = closest["start"]
 
     # Snap end: find the segment that contains end, use its finish
@@ -85,7 +85,7 @@ def _snap_to_segment_boundaries(start: float, end: float, segments: list[dict]) 
             break
     else:
         closest = min(segments, key=lambda s: abs(s["end"] - end), default=None)
-        if closest and abs(closest["end"] - end) <= 4.0:
+        if closest:
             snapped_end = closest["end"]
 
     return snapped_start, snapped_end
