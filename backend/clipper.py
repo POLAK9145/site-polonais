@@ -182,13 +182,15 @@ def extract_clip(
 
     vf, is_complex = _build_video_filter(platform, sub_path)
 
-    # -ss after -i = frame-accurate seek (slower but subtitles stay in sync).
-    # The hybrid pre-seek approach caused keyframe-rounding errors that
-    # shifted the clip start by up to 2 s and desynchronised every subtitle.
+    # -ss BEFORE -i: ffmpeg seeks accurately (default -accurate_seek) AND
+    # resets input timestamps to 0 at the seek point. This is critical
+    # because the subtitles filter sees timestamps from the filter chain;
+    # if timestamps weren't reset (like with -ss after -i), the filter
+    # would look for subs at t=45s while our ASS file has t=0,1,2…
     cmd = [
         "ffmpeg", "-y",
-        "-i", video_path,
         "-ss", f"{start:.3f}",
+        "-i", video_path,
         "-t", f"{duration:.3f}",
     ]
     if is_complex:
