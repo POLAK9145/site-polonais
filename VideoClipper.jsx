@@ -129,6 +129,21 @@ function ProgressBar({ value, message }) {
   );
 }
 
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    });
+  };
+  return (
+    <button onClick={handleCopy} style={copyBtnStyle}>
+      {copied ? '✅ Copié !' : '📋 Copier la caption'}
+    </button>
+  );
+}
+
 function ClipCard({ clip, platform }) {
   const [playing, setPlaying] = useState(false);
   const videoRef = useRef(null);
@@ -200,6 +215,18 @@ function ClipCard({ clip, platform }) {
         <div style={{ margin: '8px 0', fontSize: 11, color: C.border, fontFamily: 'monospace' }}>
           {fmtTimestamp(clip.start)} → {fmtTimestamp(clip.end)}
         </div>
+
+        {clip.caption && (
+          <div style={captionBoxStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: C.accent }}>📱 Caption</span>
+              <CopyButton text={clip.caption} />
+            </div>
+            <p style={{ margin: 0, fontSize: 11, color: C.muted, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+              {clip.caption}
+            </p>
+          </div>
+        )}
 
         {clip.transcript && (
           <details style={{ marginTop: 4 }}>
@@ -813,6 +840,26 @@ const themeBadgeStyle = {
   borderRadius: 20,
   fontSize: 11,
   fontWeight: 600,
+};
+
+const captionBoxStyle = {
+  marginTop: 10,
+  padding: '8px 10px',
+  background: 'rgba(139,92,246,0.07)',
+  border: `1px solid rgba(139,92,246,0.2)`,
+  borderRadius: 8,
+};
+
+const copyBtnStyle = {
+  padding: '3px 8px',
+  background: 'transparent',
+  border: `1px solid ${C.border}`,
+  color: C.muted,
+  borderRadius: 6,
+  fontSize: 10,
+  fontWeight: 600,
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
 };
 
 const downloadBtnStyle = {

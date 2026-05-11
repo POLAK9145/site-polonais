@@ -1,3 +1,4 @@
+import re
 import subprocess
 import sys
 import os
@@ -85,13 +86,32 @@ def _chunk_words(words: list[dict]) -> list[list[dict]]:
     return chunks
 
 
-def _generate_ass(words: list[dict], clip_start: float, clip_duration: float, ass_path: str, platform: str):
-    """Write an ASS subtitle file with pause-based chunking and proper timing."""
-    MIN_DISPLAY = 0.9  # minimum on-screen time per chunk
+def _generate_ass(words: list[dict], clip_start: float, clip_duration: float, ass_path: str, platform: str, emphasized_words: list[str] = None):
+    """Write an ASS subtitle file with pause-based chunking and word emphasis."""
+    MIN_DISPLAY = 0.9
     st = _platform_style(platform)
     header = _ASS_HEADER.format(**st)
 
-    # Filter out any junk words (empty strings)
+    # Build a normalized set of words to emphasize
+    emph_set = set()
+    for w in (emphasized_words or []):
+        clean = re.sub(r"[^\w]", "", w.lower())
+        if clean:
+            emph_set.add(clean)
+
+    # Emphasis style: brighter yellow, slightly larger
+    emph_size = st["font_size"] + 18
+    EMPH_ON = f"{{\\c&H0000FFFF&\\fs{emph_size}\\b1}}"
+    EMPH_OFF = "{\\r}"
+
+    def _word_text(w):
+        raw = (w.get("word") or "").strip()
+        if emph_set:
+            clean = re.sub(r"[^\w]", "", raw.lower())
+            if clean in emph_set:
+                return f"{EMPH_ON}{raw}{EMPH_OFF}"
+        return raw
+
     words = [w for w in words if (w.get("word") or "").strip()]
     chunks = _chunk_words(words)
 
@@ -101,23 +121,19 @@ def _generate_ass(words: list[dict], clip_start: float, clip_duration: float, as
             t_start_abs = chunk[0]["start"] - clip_start
             t_end_abs = chunk[-1]["end"] - clip_start
 
-            # Stretch short chunks so the viewer can actually read them
             if t_end_abs - t_start_abs < MIN_DISPLAY:
                 t_end_abs = t_start_abs + MIN_DISPLAY
-
-            # Don't overlap into the next chunk
             if idx + 1 < len(chunks):
                 next_start = chunks[idx + 1][0]["start"] - clip_start
                 if t_end_abs > next_start - 0.05:
                     t_end_abs = next_start - 0.05
 
-            # Clamp to [0, clip_duration]
             t_start_abs = max(0.0, t_start_abs)
             t_end_abs = min(clip_duration, t_end_abs)
             if t_end_abs <= t_start_abs:
                 continue
 
-            text = " ".join((w.get("word") or "").strip() for w in chunk).strip()
+            text = " ".join(_word_text(w) for w in chunk).strip()
             if not text:
                 continue
             f.write(f"Dialogue: 0,{_fmt_ass(t_start_abs)},{_fmt_ass(t_end_abs)},Default,,0,0,0,,{text}\n")
@@ -152,12 +168,13 @@ def extract_clip(
     output_path: str,
     platform: str,
     words: list[dict],
+    emphasized_words: list[str] = None,
 ):
     duration = end - start
     sub_path = output_path.replace(".mp4", ".ass")
 
     if words:
-        _generate_ass(words, start, duration, sub_path, platform)
+        _generate_ass(words, start, duration, sub_path, platform, emphasized_words)
     else:
         st = _platform_style(platform)
         with open(sub_path, "w", encoding="utf-8") as f:

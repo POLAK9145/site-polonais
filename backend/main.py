@@ -144,7 +144,7 @@ async def _run_pipeline(job_id: str, req: ProcessRequest):
         analyser_label = "🧠  Analyse intelligente par Claude…" if req.api_key.strip() else "📊  Analyse par densité de contenu…"
         _update(job_id, progress=55, message=analyser_label)
         clip_data = await asyncio.to_thread(
-            analyze_transcript, segments, req.num_clips, req.topics, req.api_key
+            analyze_transcript, segments, req.num_clips, req.topics, req.api_key, req.groq_key
         )
 
         if not clip_data:
@@ -169,6 +169,7 @@ async def _run_pipeline(job_id: str, req: ProcessRequest):
                 str(clip_path),
                 req.platform,
                 seg.get("words", []),
+                seg.get("emphasized_words", []),
             )
             clips.append({
                 "id": i + 1,
@@ -176,6 +177,7 @@ async def _run_pipeline(job_id: str, req: ProcessRequest):
                 "title": seg.get("title", f"Clip {i + 1}"),
                 "theme": seg.get("theme", ""),
                 "reason": seg.get("reason", ""),
+                "caption": seg.get("caption", ""),
                 "start": round(seg["start"], 1),
                 "end": round(seg["end"], 1),
                 "duration": round(seg["end"] - seg["start"], 1),
