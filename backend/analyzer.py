@@ -152,16 +152,35 @@ Réponds UNIQUEMENT avec du JSON valide, sans texte autour :
 ]"""
 
 
+def _make_transcript(segments: list[dict]) -> str:
+    """Merge segments into ~30s blocks to stay well under Groq's free-tier token limit."""
+    BLOCK_SIZE = 30.0
+    blocks = []
+    block_start = None
+    block_texts: list[str] = []
+    block_end = 0.0
+    for seg in segments:
+        if block_start is None:
+            block_start = seg["start"]
+        block_texts.append(seg["text"].strip())
+        block_end = seg["end"]
+        if block_end - block_start >= BLOCK_SIZE:
+            blocks.append(f"[{block_start:.0f}s] {' '.join(t for t in block_texts if t)}")
+            block_start = None
+            block_texts = []
+    if block_texts and block_start is not None:
+        blocks.append(f"[{block_start:.0f}s] {' '.join(t for t in block_texts if t)}")
+    return "\n".join(blocks)
+
+
 def _analyze_with_groq_llm(segments: list[dict], num_clips: int, topics: str, groq_key: str) -> list[dict]:
     from groq import Groq
 
-    full_transcript = "\n".join(
-        f"[{s['start']:.1f}s – {s['end']:.1f}s] {s['text']}" for s in segments
-    )
+    transcript = _make_transcript(segments)
     topics_line = f"\nConcentre-toi sur ces sujets : {topics}" if topics.strip() else ""
 
     prompt = _LLM_PROMPT.format(
-        transcript=full_transcript,
+        transcript=transcript,
         n=num_clips,
         topics_line=topics_line,
     )
@@ -183,13 +202,11 @@ def _analyze_with_groq_llm(segments: list[dict], num_clips: int, topics: str, gr
 def _analyze_with_claude(segments: list[dict], num_clips: int, topics: str, api_key: str) -> list[dict]:
     import anthropic
 
-    full_transcript = "\n".join(
-        f"[{s['start']:.1f}s – {s['end']:.1f}s] {s['text']}" for s in segments
-    )
+    transcript = _make_transcript(segments)
     topics_line = f"\nConcentre-toi sur ces sujets : {topics}" if topics.strip() else ""
 
     prompt = _LLM_PROMPT.format(
-        transcript=full_transcript,
+        transcript=transcript,
         n=num_clips,
         topics_line=topics_line,
     )

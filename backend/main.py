@@ -212,6 +212,8 @@ async def _run_pipeline(job_id: str, req: ProcessRequest):
             msg = "Clé Groq invalide ou expirée. Vérifie-la dans ⚙."
         elif "rate limit" in msg.lower() or "429" in msg:
             msg = "Limite Groq atteinte. Réessaie dans quelques minutes."
+        elif "413" in msg or "request too large" in msg.lower() or "tokens per minute" in msg.lower():
+            msg = "Transcription trop longue pour l'analyse IA. Réessaie — la compression automatique s'appliquera."
         elif "model" in msg.lower() and "decommissioned" in msg.lower():
             msg = "Modèle Llama indisponible. Réessaie ou contacte le support."
         elif "json" in msg.lower() and ("decode" in msg.lower() or "expecting" in msg.lower()):
