@@ -234,6 +234,121 @@ function ClipCard({ clip, platform }) {
   );
 }
 
+function ResultsView({ job, jobId, platform, onReset }) {
+  const [groupByTheme, setGroupByTheme] = useState(true);
+  const [activeTheme, setActiveTheme] = useState('all');
+
+  const clips = job.clips || [];
+  const themes = [...new Set(clips.map(c => c.theme).filter(Boolean))];
+
+  const filteredClips = activeTheme === 'all'
+    ? clips
+    : clips.filter(c => c.theme === activeTheme);
+
+  const grouped = themes.length > 0
+    ? themes.map(theme => ({ theme, items: filteredClips.filter(c => c.theme === theme) }))
+        .filter(g => g.items.length > 0)
+    : [{ theme: null, items: filteredClips }];
+
+  const handleDownloadAll = () => {
+    window.location.href = `${API}/jobs/${jobId}/zip`;
+  };
+
+  return (
+    <div>
+      <div style={resultsHeaderStyle}>
+        <div>
+          <h2 style={{ margin: 0, color: C.text, fontSize: 20 }}>
+            {clips.length} clip{clips.length > 1 ? 's' : ''} extraits ✨
+          </h2>
+          <p style={{ margin: '4px 0 0', fontSize: 13, color: C.muted }}>
+            Aperçu, puis télécharge les clips qui t'intéressent
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={handleDownloadAll} style={btnPrimaryStyle}>
+            ⬇ Tout (.zip)
+          </button>
+          <button onClick={onReset} style={btnSecondaryStyle}>↩ Nouvelle vidéo</button>
+        </div>
+      </div>
+
+      {themes.length > 1 && (
+        <div style={toolbarStyle}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', flex: 1 }}>
+            <span style={{ fontSize: 12, color: C.muted, marginRight: 4 }}>Filtrer :</span>
+            <FilterChip label={`Tous (${clips.length})`} active={activeTheme === 'all'} onClick={() => setActiveTheme('all')} />
+            {themes.map(t => (
+              <FilterChip
+                key={t}
+                label={`${t} (${clips.filter(c => c.theme === t).length})`}
+                active={activeTheme === t}
+                onClick={() => setActiveTheme(t)}
+              />
+            ))}
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: C.muted, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={groupByTheme}
+              onChange={e => setGroupByTheme(e.target.checked)}
+              style={{ accentColor: C.accent }}
+            />
+            Grouper par thème
+          </label>
+        </div>
+      )}
+
+      {groupByTheme && themes.length > 0 ? (
+        grouped.map(({ theme, items }) => (
+          <div key={theme || 'none'} style={{ marginBottom: 32 }}>
+            {theme && (
+              <h3 style={groupTitleStyle}>
+                <span style={{ color: C.accent }}>🏷</span> {theme}
+                <span style={{ fontSize: 12, fontWeight: 400, color: C.muted, marginLeft: 8 }}>
+                  · {items.length} clip{items.length > 1 ? 's' : ''}
+                </span>
+              </h3>
+            )}
+            <div style={gridStyle}>
+              {items.map(clip => (
+                <ClipCard key={clip.id} clip={clip} platform={platform} />
+              ))}
+            </div>
+          </div>
+        ))
+      ) : (
+        <div style={gridStyle}>
+          {filteredClips.map(clip => (
+            <ClipCard key={clip.id} clip={clip} platform={platform} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FilterChip({ label, active, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '4px 10px',
+        background: active ? C.accentLight : 'transparent',
+        border: `1px solid ${active ? C.accent : C.border}`,
+        color: active ? C.accent : C.muted,
+        borderRadius: 14,
+        fontSize: 11,
+        fontWeight: 600,
+        cursor: 'pointer',
+        whiteSpace: 'nowrap',
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 /* ─── main component ────────────────────────────────────────────── */
 
 export default function VideoClipper() {
@@ -467,25 +582,12 @@ export default function VideoClipper() {
 
       {/* Results */}
       {isDone && (
-        <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-            <div>
-              <h2 style={{ margin: 0, color: C.text, fontSize: 20 }}>
-                {job.clips.length} clip{job.clips.length > 1 ? 's' : ''} extraits ✨
-              </h2>
-              <p style={{ margin: '4px 0 0', fontSize: 13, color: C.muted }}>
-                Aperçu, puis télécharge les clips qui t'intéressent
-              </p>
-            </div>
-            <button onClick={handleReset} style={btnSecondaryStyle}>↩ Nouvelle vidéo</button>
-          </div>
-
-          <div style={gridStyle}>
-            {job.clips.map(clip => (
-              <ClipCard key={clip.id} clip={clip} platform={platform} />
-            ))}
-          </div>
-        </div>
+        <ResultsView
+          job={job}
+          jobId={jobId}
+          platform={platform}
+          onReset={handleReset}
+        />
       )}
     </div>
   );
@@ -496,10 +598,42 @@ export default function VideoClipper() {
 const pageStyle = {
   maxWidth: 900,
   margin: '0 auto',
-  padding: '40px 20px 80px',
+  padding: 'clamp(20px, 5vw, 40px) clamp(14px, 4vw, 20px) 80px',
   fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   color: C.text,
   minHeight: '100vh',
+};
+
+const resultsHeaderStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  flexWrap: 'wrap',
+  gap: 12,
+  marginBottom: 20,
+};
+
+const toolbarStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 12,
+  flexWrap: 'wrap',
+  padding: '10px 12px',
+  background: C.surface,
+  border: `1px solid ${C.border}`,
+  borderRadius: 10,
+  marginBottom: 24,
+};
+
+const groupTitleStyle = {
+  margin: '0 0 14px',
+  fontSize: 15,
+  fontWeight: 700,
+  color: C.text,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
 };
 
 const headerStyle = {
@@ -511,7 +645,7 @@ const headerStyle = {
 
 const titleStyle = {
   margin: 0,
-  fontSize: 32,
+  fontSize: 'clamp(24px, 6vw, 32px)',
   fontWeight: 800,
   letterSpacing: '-0.5px',
 };
@@ -631,8 +765,8 @@ const errorBoxStyle = {
 
 const gridStyle = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-  gap: 24,
+  gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 260px), 1fr))',
+  gap: 20,
 };
 
 const cardStyle = {

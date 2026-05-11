@@ -9,10 +9,11 @@ _ASS_HEADER = """\
 PlayResX: {res_x}
 PlayResY: {res_y}
 ScriptType: v4.00+
+WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,{font_size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,-1,0,0,0,100,100,0,0,1,{outline},2,2,{ml},{mr},{mv},1
+Style: Default,Arial,{font_size},&H00FFFFFF,&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,{outline},2,2,{ml},{mr},{mv},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -20,8 +21,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 # Per-platform style values (all sizes are in real pixels matching PlayRes).
 _STYLE = {
-    "vertical": dict(res_x=1080, res_y=1920, font_size=72, outline=5, ml=70, mr=70, mv=80),
-    "horizontal": dict(res_x=1280, res_y=720,  font_size=42, outline=3, ml=50, mr=50, mv=35),
+    "vertical": dict(res_x=1080, res_y=1920, font_size=72, outline=5, ml=80, mr=80, mv=180),
+    "horizontal": dict(res_x=1280, res_y=720, font_size=42, outline=3, ml=60, mr=60, mv=50),
 }
 
 
@@ -59,20 +60,67 @@ def _fmt_ass(sec: float) -> str:
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
-def _generate_ass(words: list[dict], clip_start: float, ass_path: str, platform: str):
-    """Write an ASS subtitle file with 4-word chunks and correct screen positioning."""
-    CHUNK = 4
+def _chunk_words(words: list[dict]) -> list[list[dict]]:
+    """Group words into subtitle chunks based on natural pauses and a max length."""
+    MAX_WORDS = 5
+    MAX_DUR = 3.5
+    PAUSE_GAP = 0.45  # split when there's a >450ms gap between words
+
+    chunks: list[list[dict]] = []
+    current: list[dict] = []
+    for w in words:
+        if current:
+            gap = w["start"] - current[-1]["end"]
+            chunk_dur = w["end"] - current[0]["start"]
+            if (
+                len(current) >= MAX_WORDS
+                or gap >= PAUSE_GAP
+                or chunk_dur > MAX_DUR
+            ):
+                chunks.append(current)
+                current = []
+        current.append(w)
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _generate_ass(words: list[dict], clip_start: float, clip_duration: float, ass_path: str, platform: str):
+    """Write an ASS subtitle file with pause-based chunking and proper timing."""
+    MIN_DISPLAY = 0.9  # minimum on-screen time per chunk
     st = _platform_style(platform)
     header = _ASS_HEADER.format(**st)
 
-    chunks = [words[i: i + CHUNK] for i in range(0, len(words), CHUNK)]
+    # Filter out any junk words (empty strings)
+    words = [w for w in words if (w.get("word") or "").strip()]
+    chunks = _chunk_words(words)
+
     with open(ass_path, "w", encoding="utf-8") as f:
         f.write(header)
-        for chunk in chunks:
-            text = " ".join(w["word"].strip() for w in chunk)
-            t_start = _fmt_ass(chunk[0]["start"] - clip_start)
-            t_end = _fmt_ass(chunk[-1]["end"] - clip_start)
-            f.write(f"Dialogue: 0,{t_start},{t_end},Default,,0,0,0,,{text}\n")
+        for idx, chunk in enumerate(chunks):
+            t_start_abs = chunk[0]["start"] - clip_start
+            t_end_abs = chunk[-1]["end"] - clip_start
+
+            # Stretch short chunks so the viewer can actually read them
+            if t_end_abs - t_start_abs < MIN_DISPLAY:
+                t_end_abs = t_start_abs + MIN_DISPLAY
+
+            # Don't overlap into the next chunk
+            if idx + 1 < len(chunks):
+                next_start = chunks[idx + 1][0]["start"] - clip_start
+                if t_end_abs > next_start - 0.05:
+                    t_end_abs = next_start - 0.05
+
+            # Clamp to [0, clip_duration]
+            t_start_abs = max(0.0, t_start_abs)
+            t_end_abs = min(clip_duration, t_end_abs)
+            if t_end_abs <= t_start_abs:
+                continue
+
+            text = " ".join((w.get("word") or "").strip() for w in chunk).strip()
+            if not text:
+                continue
+            f.write(f"Dialogue: 0,{_fmt_ass(t_start_abs)},{_fmt_ass(t_end_abs)},Default,,0,0,0,,{text}\n")
 
 
 def _build_video_filter(platform: str, sub_path: str):
@@ -109,20 +157,26 @@ def extract_clip(
     sub_path = output_path.replace(".mp4", ".ass")
 
     if words:
-        _generate_ass(words, start, sub_path, platform)
+        _generate_ass(words, start, duration, sub_path, platform)
     else:
-        # Empty ASS so ffmpeg doesn't error on a missing file
         st = _platform_style(platform)
         with open(sub_path, "w", encoding="utf-8") as f:
             f.write(_ASS_HEADER.format(**st))
 
     vf, is_complex = _build_video_filter(platform, sub_path)
 
+    # Hybrid seek: fast pre-seek to a few seconds before the cut, then
+    # accurate fine-seek after -i. Fixes the keyframe-rounding bug that
+    # was making clips start a couple seconds early and desync subtitles.
+    fast_seek = max(0.0, start - 4.0)
+    fine_seek = start - fast_seek
+
     cmd = [
         "ffmpeg", "-y",
-        "-ss", str(start),
+        "-ss", f"{fast_seek:.3f}",
         "-i", video_path,
-        "-t", str(duration),
+        "-ss", f"{fine_seek:.3f}",
+        "-t", f"{duration:.3f}",
     ]
     if is_complex:
         cmd += ["-filter_complex", vf, "-map", "[vout]", "-map", "0:a?"]
@@ -131,6 +185,7 @@ def extract_clip(
     cmd += [
         "-c:v", "libx264", "-preset", "fast", "-crf", "23",
         "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
         output_path,
     ]
 

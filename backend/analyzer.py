@@ -26,13 +26,16 @@ def analyze_transcript(segments: list[dict], num_clips: int, topics: str, api_ke
 
 
 def _collect_words_in_range(segments: list[dict], start: float, end: float):
+    """Collect words overlapping [start, end] with a small tolerance so we
+    don't drop words that sit exactly on the boundary."""
+    PAD = 0.15
     words = []
     text_parts = []
     for seg in segments:
-        if seg["end"] > start and seg["start"] < end:
+        if seg["end"] > start - PAD and seg["start"] < end + PAD:
             text_parts.append(seg["text"])
             for w in seg.get("words", []):
-                if w["end"] > start and w["start"] < end:
+                if w["end"] > start - PAD and w["start"] < end + PAD:
                     words.append(w)
     return words, " ".join(text_parts)
 
