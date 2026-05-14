@@ -1,1 +1,43 @@
-<!DOCTYPE html><html><head><title>Apprends le polonais</title></head><body><div id='root'></div><script src='index.js'></script></body></html>
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Application complète pour apprendre le polonais : alphabet, prononciation, grammaire, vocabulaire, conjugaisons, déclinaisons, flashcards et quiz, avec audio natif." />
+  <title>Mów po polsku — Apprends le polonais</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header class="topbar">
+    <a href="#/" class="brand">
+      <span class="flag" aria-hidden="true">🇵🇱</span>
+      <span>Mów po polsku</span>
+    </a>
+    <nav class="topnav" id="topnav">
+      <a href="#/" data-route="home">Accueil</a>
+      <a href="#/parcours" data-route="parcours">Parcours</a>
+      <a href="#/alphabet" data-route="alphabet">Alphabet</a>
+      <a href="#/prononciation" data-route="prononciation">Prononciation</a>
+      <a href="#/grammaire" data-route="grammaire">Grammaire</a>
+      <a href="#/vocabulaire" data-route="vocabulaire">Vocabulaire</a>
+      <a href="#/verbes" data-route="verbes">Verbes</a>
+      <a href="#/phrases" data-route="phrases">Phrases</a>
+      <a href="#/flashcards" data-route="flashcards">Flashcards</a>
+      <a href="#/quiz" data-route="quiz">Quiz</a>
+      <a href="#/progres" data-route="progres">Progrès</a>
+    </nav>
+    <button class="menu-toggle" id="menuToggle" aria-label="Menu">☰</button>
+  </header>
+
+  <main id="app" class="app"></main>
+
+  <footer class="footer">
+    <p>Powodzenia w nauce! · Bonne chance dans ton apprentissage 🇵🇱</p>
+  </footer>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
