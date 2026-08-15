@@ -27,6 +27,8 @@ export const TRACE = {
   RETIREMENT: 'retirement',
   ORG: 'org',
   HIERARCHY: 'hierarchy',
+  CONTRACT: 'contract',
+  NPC_CAREER: 'npc_career',
   META: 'meta',
   DEFERRED: 'deferred',
 };

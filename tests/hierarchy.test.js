@@ -198,10 +198,31 @@ test('montée et descente sont des décisions indépendantes', () => {
     differing > seasons.length * 0.5,
     `${differing}/${seasons.length} saisons seulement où les deux nombres diffèrent — le couplage persiste`,
   );
-  assert.ok(
-    seasons.some((s) => s.promotions === 0 && s.relegations > 0) ||
-      seasons.some((s) => s.relegations === 0 && s.promotions > 0),
-    'aucune saison avec un mouvement dans un seul sens',
+  // Preuve directe de l'indépendance, à l'échelle où la décision est prise.
+  // L'ancienne formulation cherchait une saison entière sans la moindre montée
+  // dans le monde : depuis que le marché des PNJ est actif (étape 4), neuf
+  // scènes produisent toujours au moins un mouvement de chaque sens, et
+  // l'assertion ne mesurait plus le couplage mais la taille du monde.
+  const world = generateWorld({ seed: 4501, startYear: 2030 });
+  const doomed = teamsAtTier(world, 'vanguard', 4).concat(teamsAtTier(world, 'vanguard', 3));
+  assert.ok(doomed.length >= 2, 'il faut des équipes à faire chuter');
+  for (const t of doomed) {
+    setRosterLevel(world, t, 35);
+    fund(world, t, { budget: -90000, income: 12000 });
+    giveSeason(world, t, { played: 20, wins: 0, points: 0, oppStrength: 80, rank: 8, entrants: 8 });
+  }
+  // Personne d'autre n'a joué : aucune candidature à la montée n'est possible.
+  for (const t of scene(world, 'vanguard')) {
+    if (doomed.includes(t)) continue;
+    t.season = { wins: 0, losses: 0, points: 0, played: 0, mapWins: 0, mapLosses: 0, oppStrengthSum: 0, placements: [] };
+  }
+  const moves = applyHierarchyChanges(world, new RNG(31), { leagueTarget: 8 });
+  const inVanguard = (list) => list.filter((m) => world.teams[m.teamId]?.gameId === 'vanguard');
+  assert.ok(inVanguard(moves.relegated).length > 0, 'aucune descente alors que tout s’effondre');
+  assert.equal(
+    inVanguard(moves.promoted).length,
+    0,
+    'une montée a été déclenchée alors qu’aucune équipe n’a de dossier : les deux décisions restent couplées',
   );
 });
 

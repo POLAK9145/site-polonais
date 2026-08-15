@@ -30,6 +30,8 @@ import { decayRelations } from './relations.js';
 import { weekOfYear, WEEKS_PER_YEAR } from './time.js';
 import { dissolveOrg } from './events/defs/worldEvents.js';
 import { formAmateurTeams, dissolveFailedAmateurTeams } from './amateur.js';
+import { runContractCycle, runReleases } from './contracts.js';
+import { runFreeAgentMarket, tickIdleWeeks } from './npcMarket.js';
 
 const NPC_BATCH = 4;
 
@@ -683,6 +685,22 @@ export function runAmateurFormation(world, rng) {
 export function runMarket(world, rng) {
   if (world.week % 2 !== 0) return [];
   return runNpcTransferWindow(world, rng, { maxMoves: 24 });
+}
+
+/**
+ * Vie contractuelle et carrières des PNJ (étape 4).
+ *
+ * L'ordre compte : les contrats échus sont d'abord arbitrés — ce qui libère des
+ * joueurs et ouvre des places —, les licenciements suivent, puis les agents
+ * libres démarchent le marché ainsi rouvert. Les équipes, elles, continuent de
+ * chercher par `runMarket` : les deux côtés du marché coexistent.
+ */
+export function runCareerCycle(world, rng) {
+  tickIdleWeeks(world);
+  const contracts = runContractCycle(world, rng);
+  const released = runReleases(world, rng);
+  const market = runFreeAgentMarket(world, rng);
+  return { contracts, released: released.length, ...market };
 }
 
 /**

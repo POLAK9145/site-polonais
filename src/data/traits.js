@@ -22,7 +22,7 @@ export const TRAITS = [
     id: 'ambitious',
     label: 'Ambitieux',
     desc: "Veut toujours l'étage au-dessus. Part vite si le projet plafonne.",
-    mods: { growth: 1.08, loyalty: 0.75, greed: 1.1, conflictRisk: 1.1 },
+    mods: { growth: 1.08, loyalty: 0.75, greed: 1.1, conflictRisk: 1.1 , ambition: 1.35},
   },
   {
     id: 'calm',
@@ -52,13 +52,13 @@ export const TRAITS = [
     id: 'loyal',
     label: 'Loyal',
     desc: 'Reste quand ça va mal.',
-    mods: { loyalty: 1.7, synergy: 0.12, greed: 0.8 },
+    mods: { loyalty: 1.7, synergy: 0.12, greed: 0.8 , ambition: 0.82},
   },
   {
     id: 'opportunist',
     label: 'Opportuniste',
     desc: 'Sait exactement quand partir.',
-    mods: { loyalty: 0.5, greed: 1.35, synergy: -0.06 },
+    mods: { loyalty: 0.5, greed: 1.35, synergy: -0.06 , ambition: 1.2},
   },
   {
     id: 'introvert',
@@ -76,7 +76,7 @@ export const TRAITS = [
     id: 'competitive',
     label: 'Compétiteur',
     desc: 'Déteste perdre plus qu’il n’aime gagner.',
-    mods: { clutchDelta: 4, growth: 1.06, conflictRisk: 1.15, burnoutRisk: 1.1 },
+    mods: { clutchDelta: 4, growth: 1.06, conflictRisk: 1.15, burnoutRisk: 1.1 , ambition: 1.15},
   },
   {
     id: 'grudgeful',
@@ -100,13 +100,13 @@ export const TRAITS = [
     id: 'laidback',
     label: 'Nonchalant',
     desc: 'Ne se met jamais la pression. Parfois trop peu.',
-    mods: { growth: 0.86, burnoutRisk: 0.6, clutchDelta: 2, formVolatility: 0.9 },
+    mods: { growth: 0.86, burnoutRisk: 0.6, clutchDelta: 2, formVolatility: 0.9 , ambition: 0.78},
   },
   {
     id: 'teamfirst',
     label: 'Altruiste',
     desc: 'Fait briller les autres.',
-    mods: { synergy: 0.24, mediaGrowth: 0.85 },
+    mods: { synergy: 0.24, mediaGrowth: 0.85 , ambition: 0.9},
   },
   {
     id: 'analytical',
@@ -183,6 +183,11 @@ function computeTraitMods(traitIds) {
     greed: 1,
     conflictRisk: 1,
     burnoutRisk: 1,
+    // Appétit pour l'étage au-dessus : pèse sur les décisions de carrière des
+    // PNJ (accepter une structure modeste, tenter une autre scène). Les traits
+    // le portaient déjà dans leur description sans qu'aucun chiffre ne
+    // l'exprime — « Veut toujours l'étage au-dessus », pour Ambitieux.
+    ambition: 1,
   };
   for (const id of traitIds || []) {
     const t = TRAITS_BY_ID[id];

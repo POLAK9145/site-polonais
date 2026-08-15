@@ -221,10 +221,16 @@ export const OBJECTIVE_LABELS = {
  * Offres reçues par un joueur donné. On ne teste que les équipes
  * plausibles : même jeu, structure vivante, place ou besoin réel.
  */
-export function collectOffers(world, person, rng, { maxOffers = 3, minScore = 42 } = {}) {
+export function collectOffers(world, person, rng, { maxOffers = 3, minScore = 42, gameId = null } = {}) {
+  // `gameId` permet de démarcher une AUTRE scène que la sienne. Sans cette
+  // ouverture, aucune équipe ne regardait jamais un joueur venu d'ailleurs et
+  // les PNJ ne pouvaient pas changer de jeu — mesuré à 0 % sur vingt ans.
+  // `evaluateInterest` applique déjà la pénalité de familiarité (§10), le coût
+  // du changement reste donc réel.
+  const wanted = gameId ?? person.gameId;
   const candidates = [];
   for (const team of Object.values(world.teams)) {
-    if (!team.active || team.gameId !== person.gameId) continue;
+    if (!team.active || team.gameId !== wanted) continue;
     if (team.id === person.teamId) continue;
     const game = GAMES_BY_ID[team.gameId];
     if (team.roster.length >= game.teamSize + 1) continue;
@@ -343,14 +349,21 @@ export function releasePlayer(world, personId, week, reason = 'licenciement') {
  * comblent leurs trous, remplacent leurs maillons faibles, et les agents
  * libres trouvent (ou non) une place. Le monde bouge sans le joueur (§3).
  */
-export function runNpcTransferWindow(world, rng, { maxMoves = 14 } = {}) {
+export function runNpcTransferWindow(world, rng, { maxMoves = 14, chainDepth = 3 } = {}) {
   if (!isTransferWindow(world.week)) return [];
   const moves = [];
   const teams = rng.shuffle(
     Object.values(world.teams).filter((t) => t.active && world.orgs[t.orgId]?.alive),
   );
 
-  for (const team of teams) {
+  // Chaîne de mercato (§P) : l'équipe dépouillée d'un titulaire est remise en
+  // file pour chercher à son tour, dans la même fenêtre. Sans cela, un départ
+  // ne créait un trou que jusqu'au prochain passage — les réactions en chaîne
+  // n'existaient pas. La profondeur est bornée pour éviter l'emballement.
+  const queue = [...teams];
+  const chainCount = new Map();
+
+  for (const team of queue) {
     if (moves.length >= maxMoves) break;
     const needs = teamNeeds(world, team);
     const org = world.orgs[team.orgId];
@@ -387,9 +400,18 @@ export function runNpcTransferWindow(world, rng, { maxMoves = 14 } = {}) {
       continue;
     }
 
+    const poachedFrom = best.cand.teamId ? world.teams[best.cand.teamId] : null;
     const offer = buildOffer(world, team, best.cand, best.interest, rng);
     const res = signPlayer(world, best.cand, offer, { week: world.week });
     if (res.ok) {
+      // Le club dépouillé cherche à son tour : c'est la réaction en chaîne.
+      if (poachedFrom && poachedFrom.active && poachedFrom.id !== team.id) {
+        const depth = (chainCount.get(poachedFrom.id) ?? 0) + 1;
+        if (depth <= chainDepth) {
+          chainCount.set(poachedFrom.id, depth);
+          queue.push(poachedFrom);
+        }
+      }
       if (isTracing()) {
         trace(TRACE.RECRUIT, world.week, {
           orgId: org.id,

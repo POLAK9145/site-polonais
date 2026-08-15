@@ -30,6 +30,7 @@ import {
   simulateOrgEconomy,
   runYearlyCycle,
   runMarket,
+  runCareerCycle,
   fillEmptyRosters,
   runAmateurFormation,
   decayWorldRelations,
@@ -236,6 +237,7 @@ export function advanceWeek(session) {
   simulateTeams(world, rng);
   simulateOrgEconomy(world, rng);
   runMarket(world, rng);
+  runCareerCycle(world, rng);
   runAmateurFormation(world, rng);
   fillEmptyRosters(world, rng);
   decayWorldRelations(world);
@@ -328,6 +330,7 @@ export function advanceWorldOnly(session) {
   simulateTeams(world, rng);
   simulateOrgEconomy(world, rng);
   runMarket(world, rng);
+  runCareerCycle(world, rng);
   runAmateurFormation(world, rng);
   fillEmptyRosters(world, rng);
   decayWorldRelations(world);
