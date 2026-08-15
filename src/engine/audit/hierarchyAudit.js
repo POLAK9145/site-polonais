@@ -272,39 +272,48 @@ function tierSnapshot(world) {
 function pickTrajectories(lived, years) {
   const label = (t) => t.tiers.map((s) => `${s.tier}@an${s.fromYear}`).join(' → ');
   const out = {};
+  // Une même organisation ne doit pas illustrer deux formes à la fois : sans
+  // cette exclusion, la plus spectaculaire des ascensions se retrouvait aussi
+  // désignée comme l'ascenseur du monde.
+  const used = new Set();
+  const take = (kind, list, rank, render) => {
+    const pick = list.filter((t) => !used.has(t.id)).sort(rank)[0];
+    if (!pick) return;
+    used.add(pick.id);
+    out[kind] = { name: pick.name, path: render(pick) };
+  };
 
-  const ascension = lived
-    .filter((t) => t.peakTier - t.startTier >= 2 && t.up > t.down)
-    .sort((a, b) => b.peakTier - b.startTier - (a.peakTier - a.startTier))[0];
-  if (ascension) out.ascension = { name: ascension.name, path: label(ascension) };
-
-  const declineTrack = lived
-    .filter((t) => t.peakTier - t.current >= 2)
-    .sort((a, b) => b.peakTier - b.current - (a.peakTier - a.current))[0];
-  if (declineTrack) out.decline = { name: declineTrack.name, path: label(declineTrack) };
-
-  const elevator = lived
-    .filter((t) => t.up >= 2 && t.down >= 2)
-    .sort((a, b) => b.up + b.down - (a.up + a.down))[0];
-  if (elevator) out.elevator = { name: elevator.name, path: label(elevator) };
-
-  const stable = lived
-    .filter((t) => t.up + t.down === 0 && (t.diedYear ?? years) - t.bornYear >= 15)
-    .sort((a, b) => b.current - a.current)[0];
-  if (stable) {
-    out.stable = {
-      name: stable.name,
-      path: `tier ${stable.current} pendant ${(stable.diedYear ?? years) - stable.bornYear} ans`,
-    };
-  }
-
-  // Une surprise : née tard, montée haut, sans redescendre.
-  const surprise = lived
-    .filter((t) => t.bornYear > 2 && t.startTier <= 1 && t.peakTier >= 3)
-    .sort((a, b) => b.peakTier - a.peakTier || a.bornYear - b.bornYear)[0];
-  if (surprise) {
-    out.surprise = { name: surprise.name, path: `née an ${surprise.bornYear} — ${label(surprise)}` };
-  }
+  take(
+    'ascension',
+    lived.filter((t) => t.peakTier - t.startTier >= 2 && t.up > t.down),
+    (a, b) => b.peakTier - b.startTier - (a.peakTier - a.startTier),
+    label,
+  );
+  take(
+    'decline',
+    lived.filter((t) => t.peakTier - t.current >= 2),
+    (a, b) => b.peakTier - b.current - (a.peakTier - a.current),
+    label,
+  );
+  take(
+    'elevator',
+    lived.filter((t) => t.up >= 2 && t.down >= 2),
+    (a, b) => b.up + b.down - (a.up + a.down),
+    label,
+  );
+  take(
+    'stable',
+    lived.filter((t) => t.up + t.down === 0 && (t.diedYear ?? years) - t.bornYear >= 15),
+    (a, b) => b.current - a.current,
+    (t) => `tier ${t.current} pendant ${(t.diedYear ?? years) - t.bornYear} ans`,
+  );
+  // Une surprise : née tard, partie du bas, montée haut.
+  take(
+    'surprise',
+    lived.filter((t) => t.bornYear > 2 && t.startTier <= 1 && t.peakTier >= 3),
+    (a, b) => b.peakTier - a.peakTier || a.bornYear - b.bornYear,
+    (t) => `née an ${t.bornYear} — ${label(t)}`,
+  );
 
   return out;
 }
