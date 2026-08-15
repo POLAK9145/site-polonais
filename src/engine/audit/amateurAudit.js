@@ -178,6 +178,20 @@ export function runAmateurAudit({
     amateurToLeague: 0,
     amateurToPro: 0,
   };
+  // Les mêmes flux, ventilés par scène : c'est la seule façon de voir qu'un
+  // circuit d'entrée global sain cache une scène qui ne recrute plus.
+  const byScene = {};
+  for (const game of GAMES) {
+    byScene[game.id] = {
+      created: 0,
+      dissolved: 0,
+      promoted: 0,
+      joins: 0,
+      departures: 0,
+      toLeaguePlayers: 0,
+      newcomers: 0,
+    };
+  }
   const snapshots = [];
   // Durée de vie des équipes amateurs dissoutes, en semaines.
   const amateurLifespans = [];
@@ -201,24 +215,36 @@ export function runAmateurAudit({
       for (const id of roster) nextByPerson.set(id, team.id);
     }
     for (const [id] of next) {
-      if (!prevAmateur.has(id)) flows.amateurTeamsCreated++;
+      if (prevAmateur.has(id)) continue;
+      flows.amateurTeamsCreated++;
+      const scene = byScene[world.teams[id]?.gameId];
+      if (scene) scene.created++;
     }
     for (const [id, roster] of prevAmateur) {
       if (next.has(id)) continue;
       const team = world.teams[id];
+      const scene = byScene[team?.gameId];
       // Une équipe qui disparaît de l'ensemble amateur a soit été dissoute,
       // soit promue : la distinction compte, c'est la différence entre un
       // échec et une réussite.
       if (team?.active && canSustainLeague(world.orgs[team.orgId])) {
         flows.amateurToLeague++;
+        if (scene) scene.promoted++;
       } else {
         flows.amateurTeamsDissolved++;
         if (team) amateurLifespans.push(world.week - team.created);
         flows.departuresAmateur += roster.size;
+        if (scene) {
+          scene.dissolved++;
+          scene.departures += roster.size;
+        }
       }
     }
     for (const [personId, teamId] of nextByPerson) {
-      if (prevAmateurByPerson.get(personId) !== teamId) flows.joinsAmateur++;
+      if (prevAmateurByPerson.get(personId) === teamId) continue;
+      flows.joinsAmateur++;
+      const scene = byScene[world.teams[teamId]?.gameId];
+      if (scene) scene.joins++;
     }
     for (const [personId, teamId] of prevAmateurByPerson) {
       if (nextByPerson.has(personId)) continue;
@@ -227,10 +253,15 @@ export function runAmateurAudit({
       // rosters d'une équipe dissoute ont déjà été comptés plus haut.
       if (!next.has(teamId)) continue;
       flows.departuresAmateur++;
+      const scene = byScene[world.teams[teamId]?.gameId];
+      if (scene) scene.departures++;
       const p = world.persons[personId];
       if (p?.teamId && p.teamId !== teamId) {
         const dest = world.teams[p.teamId];
-        if (dest && canSustainLeague(world.orgs[dest.orgId])) flows.amateurToPro++;
+        if (dest && canSustainLeague(world.orgs[dest.orgId])) {
+          flows.amateurToPro++;
+          if (scene) scene.toLeaguePlayers++;
+        }
       }
     }
     prevAmateur = next;
@@ -246,6 +277,7 @@ export function runAmateurAudit({
       else unattachedWeeks.set(p.id, (unattachedWeeks.get(p.id) ?? 0) + 1);
       if (!seen.has(p.id)) {
         seen.add(p.id);
+        if (byScene[p.gameId]) byScene[p.gameId].newcomers++;
         if (cohortSet.has(yearIndex)) {
           cohorts.get(yearIndex).push({
             id: p.id,
@@ -302,6 +334,7 @@ export function runAmateurAudit({
     years,
     crash,
     flows,
+    byScene,
     snapshots,
     amateurLifespanYears: summarizeLifespans(amateurLifespans),
     cohorts: summarizeCohorts(cohorts, years),

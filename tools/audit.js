@@ -272,6 +272,48 @@ function runAmateurMode(opts) {
   }
 
   lines.push('');
+  lines.push('--- Distribution de l’écosystème d’entrée, par scène ---');
+  lines.push(
+    ['scène', 'éq.moy', 'min', 'max', 'j.amateurs', 'sans éq.', 'nouveaux', 'créations', 'dissol.', 'montées', '→ligue']
+      .map((h) => h.padStart(11))
+      .join(''),
+  );
+  const finalScenes = r.snapshots.at(-1).scenes;
+  const amMeans = [];
+  for (const s of finalScenes) {
+    if (!s.alive) continue;
+    const f = r.byScene[s.gameId];
+    amMeans.push(s.amateurMean ?? 0);
+    lines.push(
+      [
+        GAMES_BY_ID[s.gameId].shortName,
+        s.amateurMean ?? s.amateurTeams,
+        s.amateurMin ?? '—',
+        s.amateurMax ?? '—',
+        s.amateurPlayers,
+        s.unattachedMean ?? s.unattached,
+        f.newcomers,
+        f.created,
+        f.dissolved,
+        f.promoted,
+        f.toLeaguePlayers,
+      ]
+        .map((v) => String(v).padStart(11))
+        .join(''),
+    );
+  }
+  const sorted = [...amMeans].sort((a, b) => a - b);
+  const median = sorted.length
+    ? sorted.length % 2
+      ? sorted[(sorted.length - 1) / 2]
+      : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+    : 0;
+  lines.push(
+    `  moyenne ${Math.round((amMeans.reduce((a, b) => a + b, 0) / Math.max(1, amMeans.length)) * 10) / 10}` +
+      ` | médiane ${median} | min ${Math.min(...amMeans)} | max ${Math.max(...amMeans)}`,
+  );
+
+  lines.push('');
   lines.push('--- Flux cumulés du circuit d’entrée ---');
   lines.push(`Équipes amateurs créées      : ${r.flows.amateurTeamsCreated}`);
   lines.push(`Équipes amateurs dissoutes   : ${r.flows.amateurTeamsDissolved}`);
