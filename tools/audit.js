@@ -354,6 +354,30 @@ function runAmateurMode(opts) {
   }
 
   lines.push('');
+  lines.push('--- Suivi de la formation : vivier suffisant mais dispersé ? ---');
+  lines.push(
+    ['scène', 'effectif', 'sans éq.', 'régions', 'viables', 'part rég.max', 'p(form.)', 'délai moy.']
+      .map((h) => h.padStart(13))
+      .join(''),
+  );
+  for (const [gameId, w] of Object.entries(r.formationWatch)) {
+    lines.push(
+      [
+        GAMES_BY_ID[gameId].shortName,
+        w.teamSize,
+        w.unattached,
+        `${w.regions} [${w.regionPools.join('/')}]`,
+        w.viableRegions,
+        w.topRegionShare ?? '—',
+        w.formationProbabilitySum,
+        w.integrationWeeksMean === null ? '—' : `${w.integrationWeeksMean} sem.`,
+      ]
+        .map((v) => String(v).padStart(13))
+        .join(''),
+    );
+  }
+
+  lines.push('');
   const p = r.population;
   lines.push(
     `Population finale : ${p.total} (${p.rostered} en équipe, ${p.unattached} libres, ${p.staff} staff, ${p.retired} retraités)`,

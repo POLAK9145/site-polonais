@@ -22,7 +22,7 @@ import { GAMES } from '../../data/games.js';
 import { createSession, advanceWorldOnly } from '../simulation.js';
 import { validateWorld } from '../validator.js';
 import { STATUS, age as personAge } from '../person.js';
-import { canSustainLeague } from '../amateur.js';
+import { canSustainLeague, formationOutlook } from '../amateur.js';
 import { WEEKS_PER_YEAR } from '../time.js';
 import { randomPlayerConfig } from './runner.js';
 
@@ -134,6 +134,12 @@ function summarizeYear(acc, gameId) {
   };
 }
 
+function recordIntegration(store, gameId, weeks) {
+  const slot = (store[gameId] ??= { sum: 0, n: 0 });
+  slot.sum += weeks;
+  slot.n++;
+}
+
 function round(v, d = 2) {
   const f = 10 ** d;
   return Math.round(v * f) / f;
@@ -203,6 +209,10 @@ export function runAmateurAudit({
   let prevAmateurByPerson = new Map(); // personId -> teamId
   const unattachedWeeks = new Map(); // personId -> semaines consécutives sans équipe
   const seen = new Set(Object.keys(world.persons));
+  // Délai avant première intégration, par scène : semaine d'apparition d'un
+  // nouveau venu, puis semaine où il rejoint sa première équipe.
+  const awaiting = new Map(); // personId -> { week, gameId }
+  const integrationDelays = {};
   let crash = null;
 
   const scan = () => {
@@ -278,6 +288,8 @@ export function runAmateurAudit({
       if (!seen.has(p.id)) {
         seen.add(p.id);
         if (byScene[p.gameId]) byScene[p.gameId].newcomers++;
+        if (p.teamId) recordIntegration(integrationDelays, p.gameId, 0);
+        else awaiting.set(p.id, { week: world.week, gameId: p.gameId });
         if (cohortSet.has(yearIndex)) {
           cohorts.get(yearIndex).push({
             id: p.id,
@@ -296,6 +308,18 @@ export function runAmateurAudit({
           continue;
         }
         if (p.teamId) entry.firstTeamWeek = world.week;
+      }
+    }
+    // Première intégration des nouveaux venus, scène par scène.
+    for (const [id, entry] of awaiting) {
+      const p = world.persons[id];
+      if (!p) {
+        awaiting.delete(id);
+        continue;
+      }
+      if (p.teamId) {
+        recordIntegration(integrationDelays, entry.gameId, world.week - entry.week);
+        awaiting.delete(id);
       }
     }
   };
@@ -340,6 +364,7 @@ export function runAmateurAudit({
     cohorts: summarizeCohorts(cohorts, years),
     population: populationBreakdown(world),
     accessibility: accessibility(world),
+    formationWatch: formationWatch(world, integrationDelays),
     issues: validateWorld(world).slice(0, 20),
     // Le monde lui-même n'est rendu que sur demande : les tests en ont besoin
     // pour inspecter les rosters, un rapport JSON n'en veut surtout pas.
@@ -407,6 +432,50 @@ function populationBreakdown(world) {
  * dans une équipe ? 100 % signifierait qu'il n'y a plus de compétition à
  * l'entrée ; 0 % qu'il n'y a pas de porte du tout.
  */
+/**
+ * Suivi du cas « vivier suffisant, mais trop dispersé » (anomalie Vanguard).
+ *
+ * Une scène peut compter quinze joueurs sans équipe et ne former aucune équipe
+ * d'entrée : à cinq joueurs par effectif répartis sur trois régions, aucune
+ * région n'atteint jamais cinq. Ce n'est pas traité comme un bug — c'est
+ * mesuré, pour décider plus tard s'il faut autoriser une formation
+ * interrégionale, une migration, ou rien.
+ *
+ * La probabilité rendue est celle que le moteur emploie réellement
+ * (`formationOutlook`), pas une reconstitution.
+ */
+export function formationWatch(world, integrationDelays = {}) {
+  const out = {};
+  for (const game of GAMES) {
+    const gs = world.gameStates[game.id];
+    if (!gs?.alive) continue;
+    const outlook = formationOutlook(world, game.id);
+    const sizes = outlook.map((o) => o.poolSize);
+    const total = sizes.reduce((a, b) => a + b, 0);
+    // Concentration régionale : part du vivier réunie dans la meilleure région.
+    // C'est elle qui décide si un effectif peut se constituer, pas le total.
+    const topShare = total > 0 ? Math.max(...sizes, 0) / total : null;
+    const delay = integrationDelays[game.id];
+    out[game.id] = {
+      teamSize: game.teamSize,
+      unattached: total,
+      regions: outlook.length,
+      regionPools: outlook.map((o) => o.poolSize),
+      topRegionShare: topShare === null ? null : round(topShare, 2),
+      // Régions capables de réunir un effectif complet, ici et maintenant.
+      viableRegions: outlook.filter((o) => o.enough).length,
+      formationProbabilityMax: round(Math.max(0, ...outlook.map((o) => o.probability)), 3),
+      formationProbabilitySum: round(
+        outlook.reduce((a, o) => a + o.probability, 0),
+        3,
+      ),
+      integrationWeeksMean: delay && delay.n > 0 ? round(delay.sum / delay.n, 1) : null,
+      integrationSample: delay?.n ?? 0,
+    };
+  }
+  return out;
+}
+
 export function accessibility(world) {
   const out = {};
   for (const game of GAMES) {

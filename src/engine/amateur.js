@@ -94,6 +94,44 @@ function amateurTeamsByRegion(world, gameId) {
  * existent déjà. Le plafond lui-même est dérivé du nombre de joueurs
  * disponibles — il n'y a donc pas de « bon nombre » d'équipes amateurs.
  */
+/**
+ * Perspectives de formation d'une scène, région par région.
+ *
+ * Exposé pour que l'audit mesure exactement la grandeur que le moteur emploie :
+ * dupliquer le calcul côté observation reviendrait à mesurer autre chose. Sert
+ * notamment à suivre le cas d'une scène dont le vivier est suffisant en nombre
+ * mais trop dispersé pour réunir un effectif (roster de cinq réparti sur trois
+ * régions).
+ */
+export function formationOutlook(world, gameId) {
+  const game = GAMES_BY_ID[gameId];
+  const gs = world.gameStates[gameId];
+  if (!game || !gs) return [];
+  const size = game.teamSize;
+  const vitality = gs.vitality ?? 0.5;
+  const pools = unattachedByRegion(world, gameId);
+  const existing = amateurTeamsByRegion(world, gameId);
+
+  return Object.entries(pools).map(([regionId, pool]) => {
+    // Appétit : avec trois rosters de joueurs disponibles, la scène est
+    // clairement sous-équipée en équipes d'entrée.
+    const appetite = clamp(pool.length / (size * 3), 0, 1);
+    // Plafond dérivé de la population disponible, pas d'une constante.
+    const ceilingTeams = 2 + Math.floor(pool.length / size);
+    const room = clamp(1 - (existing[regionId] ?? 0) / ceilingTeams, 0, 1);
+    const enough = pool.length >= size;
+    return {
+      regionId,
+      pool,
+      poolSize: pool.length,
+      teamSize: size,
+      existing: existing[regionId] ?? 0,
+      enough,
+      probability: enough ? 0.38 * appetite * room * (0.35 + 0.65 * vitality) : 0,
+    };
+  });
+}
+
 export function formAmateurTeams(world, rng) {
   if (world.week % FORMATION_REVIEW_WEEKS !== 0) return [];
   const created = [];
@@ -101,29 +139,11 @@ export function formAmateurTeams(world, rng) {
   for (const game of GAMES) {
     const gs = world.gameStates[game.id];
     if (!gs?.alive) continue;
-    const size = game.teamSize;
-    const pools = unattachedByRegion(world, game.id);
-    const existing = amateurTeamsByRegion(world, game.id);
-
-    for (const [regionId, pool] of Object.entries(pools)) {
-      if (pool.length < size) continue;
-
-      // Appétit : avec trois rosters de joueurs disponibles, la scène est
-      // clairement sous-équipée en équipes d'entrée.
-      const appetite = clamp(pool.length / (size * 3), 0, 1);
-      // Plafond dérivé de la population disponible, pas d'une constante.
-      const ceilingTeams = 2 + Math.floor(pool.length / size);
-      const room = clamp(1 - (existing[regionId] ?? 0) / ceilingTeams, 0, 1);
-      const vitality = gs.vitality ?? 0.5;
-
-      const p = 0.38 * appetite * room * (0.35 + 0.65 * vitality);
-      if (!rng.chance(p)) continue;
-
-      const team = createAmateurTeam(world, rng, game, regionId, pool);
-      if (team) {
-        created.push(team);
-        existing[regionId] = (existing[regionId] ?? 0) + 1;
-      }
+    for (const outlook of formationOutlook(world, game.id)) {
+      if (!outlook.enough) continue;
+      if (!rng.chance(outlook.probability)) continue;
+      const team = createAmateurTeam(world, rng, game, outlook.regionId, outlook.pool);
+      if (team) created.push(team);
     }
   }
   return created;
