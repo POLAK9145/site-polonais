@@ -1,0 +1,291 @@
+#!/usr/bin/env node
+/**
+ * Outil d'audit de simulation (§2, §36, §37).
+ *
+ * Simule des centaines ou des milliers de carrières sans interface, agrège
+ * les résultats et produit un rapport d'anomalies.
+ *
+ *   node tools/audit.js --careers=1000 --years=20 --seed=4242
+ *   node tools/audit.js --careers=200 --json=rapport.json
+ *   node tools/audit.js --mode=world --years=30
+ *   node tools/audit.js --mode=trace --seed=7 --years=12
+ *
+ * Les carrières sont réparties sur plusieurs processus : une carrière de
+ * 20 ans coûte plusieurs secondes, et l'audit doit rester réalisable.
+ */
+
+import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
+import { availableParallelism } from 'node:os';
+import { writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+import { runOneCareer, runWorldOnly, runNpcTrajectories } from '../src/engine/audit/runner.js';
+import { POLICY_IDS } from '../src/engine/audit/policies.js';
+import { buildReport } from '../src/engine/audit/report.js';
+import { formatReport } from '../src/engine/audit/format.js';
+import { startTrace, takeTrace, stopTrace, explainRecruit, explainEvent, TRACE } from '../src/engine/trace.js';
+
+const SELF = fileURLToPath(import.meta.url);
+
+function parseArgs(argv) {
+  const out = {
+    careers: 1000,
+    years: 20,
+    seed: 4242,
+    workers: Math.max(1, Math.min(availableParallelism(), 8)),
+    mode: 'careers',
+    json: null,
+    difficulty: 'standard',
+    quiet: false,
+  };
+  for (const arg of argv.slice(2)) {
+    const m = arg.match(/^--([a-zA-Z]+)(?:=(.*))?$/);
+    if (!m) continue;
+    const [, key, value] = m;
+    if (key in out) {
+      if (typeof out[key] === 'number') out[key] = Number(value);
+      else if (typeof out[key] === 'boolean') out[key] = value === undefined ? true : value !== 'false';
+      else out[key] = value;
+    }
+  }
+  return out;
+}
+
+/** Répartit les carrières : chaque tâche est indépendante et reproductible. */
+function buildTasks(opts) {
+  const tasks = [];
+  for (let i = 0; i < opts.careers; i++) {
+    tasks.push({
+      seed: `${opts.seed}:${i}`,
+      years: opts.years,
+      policyId: POLICY_IDS[i % POLICY_IDS.length],
+      difficulty: opts.difficulty,
+      // Les mesures « monde » sont coûteuses : on les collecte sur un
+      // échantillon suffisant pour être significatif, pas sur tout.
+      collectWorld: i % 5 === 0,
+    });
+  }
+  return tasks;
+}
+
+async function runInWorkers(tasks, workerCount, onProgress) {
+  const results = [];
+  let next = 0;
+  let done = 0;
+
+  await Promise.all(
+    Array.from({ length: Math.min(workerCount, tasks.length) }, () =>
+      new Promise((resolve, reject) => {
+        const worker = new Worker(SELF, { workerData: { role: 'career' } });
+        const feed = () => {
+          if (next >= tasks.length) {
+            worker.postMessage({ type: 'stop' });
+            return;
+          }
+          worker.postMessage({ type: 'task', task: tasks[next++] });
+        };
+        worker.on('message', (msg) => {
+          if (msg.type === 'result') {
+            results.push(msg.result);
+            done++;
+            onProgress?.(done, tasks.length);
+            feed();
+          } else if (msg.type === 'stopped') {
+            worker.terminate();
+            resolve();
+          }
+        });
+        worker.on('error', reject);
+        worker.on('exit', () => resolve());
+        feed();
+      }),
+    ),
+  );
+
+  return results;
+}
+
+if (!isMainThread && workerData?.role === 'career') {
+  parentPort.on('message', (msg) => {
+    if (msg.type === 'stop') {
+      parentPort.postMessage({ type: 'stopped' });
+      return;
+    }
+    let result;
+    try {
+      result = runOneCareer(msg.task);
+    } catch (err) {
+      result = {
+        seed: msg.task.seed,
+        policy: msg.task.policyId,
+        crash: { message: err?.message ?? String(err), stack: (err?.stack ?? '').split('\n')[1] },
+        careerIssues: [],
+        worldIssues: [],
+        legacyProblems: [],
+        traits: [],
+        achievements: [],
+        eventsFired: [],
+        decisionLog: [],
+        titlesByTier: {},
+        reached: {},
+        story: {},
+        interaction: {},
+      };
+    }
+    parentPort.postMessage({ type: 'result', result });
+  });
+} else if (isMainThread) {
+  main().catch((err) => {
+    console.error('Audit interrompu :', err);
+    process.exit(1);
+  });
+}
+
+async function main() {
+  const opts = parseArgs(process.argv);
+  const t0 = Date.now();
+
+  if (opts.mode === 'trace') return runTraceMode(opts);
+  if (opts.mode === 'world') return runWorldMode(opts);
+
+  console.error(
+    `Audit : ${opts.careers} carrières × ${opts.years} ans, seed ${opts.seed}, ${opts.workers} processus…`,
+  );
+
+  const tasks = buildTasks(opts);
+  let lastPct = -1;
+  const careers = await runInWorkers(tasks, opts.workers, (done, total) => {
+    const pct = Math.floor((done / total) * 100);
+    if (pct !== lastPct && pct % 5 === 0) {
+      lastPct = pct;
+      const elapsed = (Date.now() - t0) / 1000;
+      const eta = done > 0 ? (elapsed / done) * (total - done) : 0;
+      process.stderr.write(`\r  ${pct}% (${done}/${total}) — ${Math.round(elapsed)}s écoulées, ~${Math.round(eta)}s restantes   `);
+    }
+  });
+  process.stderr.write('\n');
+
+  // Tests complémentaires : un monde sans joueur et un suivi de PNJ.
+  console.error('Monde sans joueur (30 ans)…');
+  const worldOnly = runWorldOnly({ seed: `${opts.seed}:world`, years: 30 });
+  console.error('Trajectoires de PNJ (20 ans)…');
+  const npc = runNpcTrajectories({ seed: `${opts.seed}:npc`, years: 20, sample: 120 });
+
+  const report = buildReport({
+    careers,
+    worldOnly,
+    npc,
+    meta: {
+      seed: opts.seed,
+      years: opts.years,
+      difficulty: opts.difficulty,
+      durationSeconds: Math.round((Date.now() - t0) / 10) / 100,
+    },
+  });
+
+  if (opts.json) {
+    writeFileSync(opts.json, JSON.stringify(report, null, 2));
+    console.error(`Rapport JSON écrit dans ${opts.json}`);
+  }
+  console.log(formatReport(report));
+}
+
+function runWorldMode(opts) {
+  console.error(`Monde sans joueur : ${opts.years} ans, seed ${opts.seed}…`);
+  const result = runWorldOnly({ seed: opts.seed, years: opts.years, sampleEveryYears: 5 });
+  const lines = [];
+  lines.push('=== MONDE SANS JOUEUR ===');
+  if (result.crash) lines.push(`PLANTAGE : ${result.crash.message} (${result.crash.stack})`);
+  lines.push(
+    ['an', 'joueurs', 'pro', 'équipes', 'incompl.', 'orgs', 'jeux', 'niv.méd', 'niv.max', 'âge top20']
+      .map((h) => h.padStart(9))
+      .join(''),
+  );
+  for (const s of result.samples) {
+    lines.push(
+      [s.year, s.active, s.pros, s.teamsActive, s.teamsIncomplete, s.orgsAlive, s.gamesAlive, s.ratingMedian, s.ratingMax, s.topPlayerAgeMean]
+        .map((v) => String(v).padStart(9))
+        .join(''),
+    );
+  }
+  lines.push('');
+  lines.push(`Nouveaux venus : ${result.newcomers} | survivants d'origine : ${result.survivors}`);
+  lines.push(`Promotions : ${result.orgs.promoted} | relégations : ${result.orgs.relegated} | orgs mortes : ${result.orgs.died}`);
+  lines.push(`Changements de roster par équipe : ${result.teams.rosterChangesPerTeam}`);
+  const empty = result.championsByYear.filter((c) => c.majorChampions === 0).length;
+  lines.push(`Années sans champion majeur : ${empty}/${result.championsByYear.length}`);
+  lines.push(`Incohérences finales : ${result.finalIssues.length}`);
+  console.log(lines.join('\n'));
+}
+
+/** Mode debug (§36) : joue une carrière en enregistrant toutes les causes. */
+function runTraceMode(opts) {
+  startTrace({ max: 60000 });
+  const result = runOneCareer({
+    seed: opts.seed,
+    years: opts.years,
+    policyId: 'random',
+    difficulty: opts.difficulty,
+    collectWorld: true,
+  });
+  const entries = takeTrace();
+  stopTrace();
+
+  const lines = [];
+  lines.push(`=== TRACE DE SIMULATION — seed ${opts.seed} ===`);
+  lines.push(`Carrière : ${result.durationYears} ans, pic ${result.peak}, ${result.titles} titres, legacy ${result.legacy}`);
+  lines.push(`Traces enregistrées : ${entries.length}`);
+  lines.push('');
+
+  const recruits = entries.filter((e) => e.kind === TRACE.RECRUIT).slice(0, 8);
+  lines.push(`--- Recrutements (${entries.filter((e) => e.kind === TRACE.RECRUIT).length} au total, 8 premiers) ---`);
+  for (const r of recruits) lines.push(explainRecruit(r));
+  lines.push('');
+
+  const refusals = entries.filter((e) => e.kind === TRACE.RECRUIT_REFUSED).slice(0, 5);
+  lines.push(`--- Refus de joueurs (${entries.filter((e) => e.kind === TRACE.RECRUIT_REFUSED).length} au total) ---`);
+  for (const r of refusals) lines.push(explainRecruit(r));
+  lines.push('');
+
+  const fired = entries.filter((e) => e.kind === TRACE.EVENT_FIRED);
+  lines.push(`--- Événements déclenchés (${fired.length}) ---`);
+  for (const e of fired.slice(0, 15)) {
+    lines.push(explainEvent(e));
+    const others = (e.candidates ?? [])
+      .filter((c) => c.id !== e.eventId)
+      .sort((a, b) => b.weight - a.weight)
+      .slice(0, 3);
+    if (others.length) {
+      lines.push(`    concurrents : ${others.map((c) => `${c.id} (${c.weight.toFixed(2)})`).join(', ')}`);
+    }
+  }
+  lines.push('');
+
+  // Pourquoi certains événements ne se déclenchent jamais.
+  const skipReasons = {};
+  for (const e of entries) {
+    if (e.kind !== TRACE.EVENT_SKIPPED) continue;
+    const key = `${e.eventId} — ${e.reason}`;
+    skipReasons[key] = (skipReasons[key] ?? 0) + 1;
+  }
+  lines.push('--- Raisons d’écartement les plus fréquentes ---');
+  for (const [k, v] of Object.entries(skipReasons).sort((a, b) => b[1] - a[1]).slice(0, 12)) {
+    lines.push(`  ${String(v).padStart(6)} × ${k}`);
+  }
+  const errors = entries.filter((e) => e.kind === TRACE.EVENT_SKIPPED && e.error);
+  if (errors.length > 0) {
+    lines.push('');
+    lines.push(`!!! ${errors.length} conditions d’événement ont levé une exception :`);
+    for (const e of errors.slice(0, 5)) lines.push(`    ${e.eventId} : ${e.reason}`);
+  }
+
+  const deferred = entries.filter((e) => e.kind === TRACE.DEFERRED);
+  lines.push('');
+  lines.push(
+    `--- Conséquences différées : ${deferred.filter((d) => d.scheduled).length} programmées, ` +
+      `${deferred.filter((d) => !d.scheduled).length} arrivées à échéance, ` +
+      `${deferred.filter((d) => d.visible).length} visibles pour le joueur ---`,
+  );
+
+  console.log(lines.join('\n'));
+}

@@ -150,8 +150,29 @@ export function traitsCompatible(a, b) {
   );
 }
 
-/** Agrège les modificateurs de plusieurs traits. */
+/**
+ * Agrège les modificateurs de plusieurs traits.
+ *
+ * Mémoïsé : cette fonction représentait 15 % du temps CPU de la simulation
+ * (appelée à chaque progression, chaque match et chaque calcul de synergie,
+ * pour chacun des ~800 personnages). Les traits d'un personnage ne changent
+ * jamais après sa création, donc le résultat est mis en cache par
+ * combinaison de traits. Comportement identique, coût quasi nul.
+ */
+const modsCache = new Map();
+
 export function traitMods(traitIds) {
+  const key = traitIds && traitIds.length > 0 ? traitIds.join(',') : '';
+  const cached = modsCache.get(key);
+  if (cached) return cached;
+  const computed = computeTraitMods(traitIds);
+  // Le nombre de combinaisons réellement rencontrées est petit ; on borne
+  // tout de même le cache par prudence.
+  if (modsCache.size < 20000) modsCache.set(key, computed);
+  return computed;
+}
+
+function computeTraitMods(traitIds) {
   const out = {
     growth: 1,
     synergy: 0,

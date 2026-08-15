@@ -17,6 +17,7 @@
  */
 
 import { clamp } from '../rng.js';
+import { isTracing, trace, TRACE } from '../trace.js';
 
 const registry = new Map();
 /** Handlers d'effets différés, adressés par type (sérialisables, §58). */
@@ -108,32 +109,65 @@ export function pickEvent(ctx) {
   const chained = takeReadyChain(ctx, week);
   if (chained) return chained;
 
+  const tracing = isTracing();
   const eligible = [];
   for (const def of registry.values()) {
     if (def.chainOnly) continue;
-    if (onCooldown(state, def, week)) continue;
+    if (onCooldown(state, def, week)) {
+      if (tracing) {
+        trace(TRACE.EVENT_SKIPPED, week, { eventId: def.id, reason: 'cooldown' });
+      }
+      continue;
+    }
     let ok = false;
+    let failure = null;
     try {
       ok = def.condition(ctx);
     } catch (err) {
       // Une condition qui explose ne doit jamais casser une partie :
-      // l'événement est simplement écarté.
+      // l'événement est simplement écarté. On le trace, car c'est un bug.
       ok = false;
+      failure = err?.message ?? 'erreur';
     }
-    if (!ok) continue;
+    if (!ok) {
+      if (tracing) {
+        trace(TRACE.EVENT_SKIPPED, week, {
+          eventId: def.id,
+          reason: failure ? `condition en erreur : ${failure}` : 'condition non remplie',
+          error: !!failure,
+        });
+      }
+      continue;
+    }
     eligible.push(def);
   }
   if (eligible.length === 0) return null;
 
-  const chosen = ctx.rng.weighted(eligible, (def) => {
+  // Les poids sont calculés une seule fois : on veut pouvoir les tracer sans
+  // les recalculer, et sans consommer d'aléatoire supplémentaire.
+  const weights = eligible.map((def) => {
     let w = 0;
     try {
       w = def.weight(ctx) ?? 0;
     } catch {
-      return 0;
+      w = 0;
     }
     return Math.max(0, w) * tagPenalty(state, def, week) * (1 + def.priority);
   });
+  const chosen = ctx.rng.weighted(eligible, (def, i) => weights[i]);
+
+  if (tracing && chosen) {
+    const totalWeight = weights.reduce((a, b) => a + b, 0);
+    const index = eligible.indexOf(chosen);
+    trace(TRACE.EVENT_FIRED, week, {
+      eventId: chosen.id,
+      tags: chosen.tags,
+      weight: weights[index],
+      share: totalWeight > 0 ? weights[index] / totalWeight : 0,
+      eligible: eligible.length,
+      candidates: eligible.map((d, i) => ({ id: d.id, weight: weights[i] })),
+    });
+  }
   return chosen ?? null;
 }
 
@@ -325,8 +359,14 @@ export function scheduleEffect(ctx, type, { delay = 26, payload = null } = {}) {
   ctx.state.scheduledEffects.push({
     type,
     dueWeek: ctx.world.week + delay,
+    // Conservé pour l'audit : permet de mesurer si les conséquences
+    // différées le sont réellement de plusieurs mois (§21, §58).
+    plannedDelay: delay,
     payload,
   });
+  if (isTracing()) {
+    trace(TRACE.DEFERRED, ctx.world.week, { type, scheduled: true, delay });
+  }
 }
 
 /**
@@ -351,6 +391,14 @@ export function runScheduledEffects(ctx) {
       msg = handler(ctx, eff.payload);
     } catch {
       msg = null;
+    }
+    if (isTracing()) {
+      trace(TRACE.DEFERRED, world.week, {
+        type: eff.type,
+        // Retard de traitement : normalement 0, non nul si l'effet a attendu.
+        lateBy: world.week - eff.dueWeek,
+        visible: !!msg,
+      });
     }
     if (msg) messages.push(msg);
   }

@@ -575,6 +575,19 @@ function findProdigy(ctx) {
 export function dissolveOrg(world, org, week) {
   org.alive = false;
   org.disbandedWeek = week;
+
+  // Balayage défensif : on libère TOUTE personne encore contractuellement
+  // liée à cette organisation, sans se fier au seul index `org.teams`.
+  // Une seule référence oubliée produit un « contrat avec une organisation
+  // disparue », que le validateur signale à juste titre (§60).
+  for (const p of Object.values(world.persons)) {
+    if (p.contract?.orgId === org.id) p.contract = null;
+    if (p.orgId === org.id) {
+      p.orgId = null;
+      if (p.status !== 'retired' && p.status !== 'staff') p.status = 'inactive';
+    }
+  }
+
   for (const teamId of Object.values(org.teams)) {
     const team = world.teams[teamId];
     if (!team) continue;

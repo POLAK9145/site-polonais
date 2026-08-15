@@ -411,6 +411,13 @@ function runPlayerWeek(session, person, report) {
   if (!team) career.counters.weeksWithoutTeam = (career.counters.weeksWithoutTeam ?? 0) + 1;
   else career.counters.weeksWithoutTeam = 0;
   trackLowPoint(career, world, rating);
+
+  // Statut le plus élevé jamais atteint. Le statut courant ne suffit pas :
+  // à la retraite il vaut « retired », ce qui effaçait toute trace d'être
+  // passé professionnel.
+  const reached = (career.counters.reachedStatus ??= {});
+  if (person.status === STATUS.SEMIPRO || person.status === STATUS.PRO) reached.semipro = true;
+  if (person.status === STATUS.PRO) reached.pro = true;
 }
 
 /**
@@ -877,6 +884,7 @@ function repairCareer(world, career, issues) {
         if (person.teamId) releasePlayer(world, person.id, world.week, 'incohérence corrigée');
         break;
       case 'contract_without_team':
+      case 'contract_dead_org':
         person.contract = null;
         break;
       case 'team_disbanded':

@@ -23,6 +23,7 @@ import { teamNeeds, teamStrength, addToRoster, removeFromRoster, rosterPersons, 
 import { salaryBand } from './org.js';
 import { relationValue, adjustRelation, endTeammateBond, REL_TAGS, getRelation } from './relations.js';
 import { isTransferWindow, isMajorTransferWindow } from './time.js';
+import { isTracing, trace, TRACE } from './trace.js';
 
 /**
  * Intérêt d'une équipe pour un joueur.
@@ -375,11 +376,41 @@ export function runNpcTransferWindow(world, rng, { maxMoves = 14 } = {}) {
     if (!best) continue;
 
     // Le joueur convoité peut refuser : loyauté, salaire, ambition.
-    if (!npcAcceptsOffer(world, best.cand, team, best.interest, rng)) continue;
+    const accepted = npcAcceptsOffer(world, best.cand, team, best.interest, rng);
+    if (!accepted) {
+      if (isTracing()) {
+        trace(TRACE.RECRUIT_REFUSED, world.week, {
+          orgId: org.id,
+          orgName: org.name,
+          personId: best.cand.id,
+          nick: best.cand.nick,
+          score: best.interest.score,
+          factors: best.interest.factors,
+          accepted: false,
+          refusalReason: 'le joueur a décliné',
+        });
+      }
+      continue;
+    }
 
     const offer = buildOffer(world, team, best.cand, best.interest, rng);
     const res = signPlayer(world, best.cand, offer, { week: world.week });
     if (res.ok) {
+      if (isTracing()) {
+        trace(TRACE.RECRUIT, world.week, {
+          orgId: org.id,
+          orgName: org.name,
+          orgTier: org.tier,
+          personId: best.cand.id,
+          nick: best.cand.nick,
+          gameId: team.gameId,
+          score: best.interest.score,
+          factors: best.interest.factors,
+          salary: offer.salary,
+          accepted: true,
+          openSlots: needs.openSlots,
+        });
+      }
       const fa = world.freeAgents.indexOf(best.cand.id);
       if (fa >= 0) world.freeAgents.splice(fa, 1);
       moves.push({ personId: best.cand.id, teamId: team.id, orgId: team.orgId, salary: offer.salary });
@@ -388,8 +419,9 @@ export function runNpcTransferWindow(world, rng, { maxMoves = 14 } = {}) {
   return moves;
 }
 
+const ROSTERED_LOOKED_AT = 22;
+
 function candidatePool(world, team, rng) {
-  const game = GAMES_BY_ID[team.gameId];
   const pool = [];
   for (const id of world.freeAgents) {
     const p = world.persons[id];
@@ -397,16 +429,26 @@ function candidatePool(world, team, rng) {
       pool.push(p);
     }
   }
+
   // On regarde aussi chez les autres : c'est ce qui crée les vrais transferts.
-  const rostered = Object.values(world.persons).filter(
-    (p) =>
-      p.gameId === team.gameId &&
-      p.teamId &&
-      p.teamId !== team.id &&
-      p.status !== STATUS.RETIRED &&
-      p.status !== STATUS.STAFF,
-  );
-  pool.push(...rng.sample(rostered, Math.min(22, rostered.length)));
+  // On échantillonne par réservoir plutôt qu'en mélangeant tout le monde :
+  // l'ancienne version triait plusieurs centaines de personnes pour n'en
+  // garder que 22, à chaque équipe et à chaque semaine de mercato.
+  const reservoir = [];
+  let seen = 0;
+  for (const p of Object.values(world.persons)) {
+    if (p.gameId !== team.gameId) continue;
+    if (!p.teamId || p.teamId === team.id) continue;
+    if (p.status === STATUS.RETIRED || p.status === STATUS.STAFF) continue;
+    seen++;
+    if (reservoir.length < ROSTERED_LOOKED_AT) {
+      reservoir.push(p);
+    } else {
+      const j = rng.int(0, seen - 1);
+      if (j < ROSTERED_LOOKED_AT) reservoir[j] = p;
+    }
+  }
+  pool.push(...reservoir);
   return pool;
 }
 
