@@ -171,6 +171,7 @@ export function teamView(session) {
     coach: team.coachId ? displayName(world.persons[team.coachId]) : null,
     season: { ...team.season },
     titles: team.titles,
+    minorTitles: team.minorTitles ?? 0,
     benched: team.subs.includes(person.id),
     roster: rosterPersons(world, team).map((p) => ({
       id: p.id,
@@ -333,6 +334,9 @@ export function statsView(session) {
     losses: s.losses,
     winRate: s.matches > 0 ? Math.round((s.wins / s.matches) * 100) : 0,
     titles: s.titles,
+    // Le circuit d'entrée compte à part : on ne le cache pas, on ne le
+    // confond pas avec un palmarès national.
+    minorTitles: s.minorTitles ?? 0,
     finals: s.finals,
     mvps: s.mvps,
     internationalTitles: s.internationalTitles,

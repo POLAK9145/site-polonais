@@ -147,6 +147,8 @@ export function createPerson(rng, opts = {}) {
       losses: 0,
       mvps: 0,
       titles: 0,
+      // Victoires du circuit d'entrée : réelles, mais pas un palmarès.
+      minorTitles: 0,
       finals: 0,
       earnings: 0,
       seasonsPro: 0,

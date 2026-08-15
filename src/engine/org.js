@@ -52,6 +52,7 @@ export function createOrg(rng, { regionId, tier, takenNames, takenTags, absWeek 
     disbandedWeek: null,
     history: [],
     titles: 0,
+    minorTitles: 0,
   };
 }
 
@@ -77,6 +78,7 @@ export function createTeam(rng, { org, gameId, absWeek = 0, tierOverride = null 
     season: emptySeasonRecord(),
     history: [],
     titles: 0,
+    minorTitles: 0,
     rivalries: {},
   };
   org.teams[gameId] = team.id;

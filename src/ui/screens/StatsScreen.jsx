@@ -18,6 +18,7 @@ export default function StatsScreen() {
           <Cell label="Défaites" value={s.losses} />
           <Cell label="Taux de victoire" value={`${s.winRate}%`} />
           <Cell label="Titres" value={s.titles} />
+          <Cell label="Tournois d’entrée" value={s.minorTitles} />
           <Cell label="Finales" value={s.finals} />
           <Cell label="MVP" value={s.mvps} />
           <Cell label="Titres internationaux" value={s.internationalTitles} />

@@ -527,9 +527,17 @@ function summarizeCompetition(world, career, comp, person) {
   const rank = placement?.rank ?? null;
   const isChampion = comp.championId === person.teamId;
   if (isChampion) {
-    logTimeline(career, world, `Titre : ${comp.name}.`, { kind: 'title', important: true });
+    // Gagner un tournoi communautaire est un fait réel, mais ce n'est pas un
+    // titre : le récit et le compteur `stats.titles` doivent dire la même
+    // chose, sans quoi une carrière « sans titre » se met à raconter qu'elle
+    // en a remporté sept.
+    const major = comp.tierLevel >= 3;
+    logTimeline(career, world, major ? `Titre : ${comp.name}.` : `Vainqueur de ${comp.name}.`, {
+      kind: major ? 'title' : 'minor_title',
+      important: major,
+    });
     addMemory(career, world, {
-      kind: 'title',
+      kind: major ? 'title' : 'minor_title',
       title: comp.name,
       text: `Vous remportez ${comp.name}.`,
     });

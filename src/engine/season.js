@@ -333,23 +333,41 @@ function awardPlacementPoints(world, comp) {
   }
 }
 
-/** Un titre entre dans l'histoire de l'équipe, de l'org et des joueurs. */
+/**
+ * Un titre entre dans l'histoire de l'équipe, de l'org et des joueurs.
+ *
+ * Un tournoi communautaire n'est pas un titre national. La distinction était
+ * sans effet tant que le circuit d'entrée ne jouait pas : depuis qu'il joue
+ * réellement — une quinzaine d'opens par an et par scène — compter toutes les
+ * victoires dans le même compteur faisait passer la moyenne de 1,12 à 14,78
+ * titres par carrière, et emportait avec elle le legacy médian (29 → 41) et la
+ * part de carrières titrées (22 % → 72 %). Le palmarès conserve donc les
+ * titres qui se disputent au niveau national et au-dessus ; les victoires
+ * d'entrée sont comptées à part, sans disparaître.
+ */
+const MAJOR_TITLE_LEVEL = 3;
+
 function recordTitles(world, comp) {
   if (!comp.championId) return;
   const team = world.teams[comp.championId];
   if (!team) return;
-  team.titles++;
+  const major = comp.tierLevel >= MAJOR_TITLE_LEVEL;
+
+  if (major) team.titles++;
+  else team.minorTitles = (team.minorTitles ?? 0) + 1;
   team.history.push({ week: world.week, text: `Vainqueur de ${comp.name}`, compId: comp.id });
   const org = world.orgs[team.orgId];
   if (org) {
-    org.titles++;
+    if (major) org.titles++;
+    else org.minorTitles = (org.minorTitles ?? 0) + 1;
     org.reputation = clamp(org.reputation + comp.tierLevel * 1.6, 0, 100);
     org.history.push({ week: world.week, text: `${comp.name} remporté`, compId: comp.id });
   }
   for (const pid of team.roster) {
     const p = world.persons[pid];
     if (!p) continue;
-    p.stats.titles++;
+    if (major) p.stats.titles++;
+    else p.stats.minorTitles = (p.stats.minorTitles ?? 0) + 1;
     if (comp.tierLevel >= 5) p.stats.internationalTitles++;
     p.reputation.pros = clamp(p.reputation.pros + comp.tierLevel * 1.8, 0, 100);
     p.reputation.public = clamp(p.reputation.public + comp.tierLevel * 2.2, 0, 100);

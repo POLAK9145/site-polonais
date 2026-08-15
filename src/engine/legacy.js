@@ -253,7 +253,14 @@ export function buildNarrative(world, career, legacy) {
 
   const titles = important.filter((t) => t.kind === 'title');
   if (titles.length === 0) {
-    parts.push(`Vous n'avez jamais remporté de compétition majeure.`);
+    // Une carrière entière passée à gagner des opens n'est pas une carrière
+    // vide : on le dit, sans pour autant en faire un palmarès.
+    const minor = person.stats.minorTitles ?? 0;
+    parts.push(
+      minor > 0
+        ? `Vous n'avez jamais remporté de compétition majeure, mais ${minor} tournois d'entrée portent votre nom.`
+        : `Vous n'avez jamais remporté de compétition majeure.`,
+    );
   } else if (titles.length === 1) {
     parts.push(`${titles[0].text} (${titles[0].year}) — le seul titre de votre carrière, et vous le savez.`);
   } else {
