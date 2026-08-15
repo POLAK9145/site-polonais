@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 
 import { runOneCareer, runWorldOnly, runNpcTrajectories } from '../src/engine/audit/runner.js';
 import { runAmateurAudit } from '../src/engine/audit/amateurAudit.js';
+import { runHierarchyAudit } from '../src/engine/audit/hierarchyAudit.js';
 import { GAMES_BY_ID } from '../src/data/games.js';
 import { POLICY_IDS } from '../src/engine/audit/policies.js';
 import { buildReport } from '../src/engine/audit/report.js';
@@ -153,6 +154,7 @@ async function main() {
   if (opts.mode === 'trace') return runTraceMode(opts);
   if (opts.mode === 'world') return runWorldMode(opts);
   if (opts.mode === 'amateur') return runAmateurMode(opts);
+  if (opts.mode === 'hierarchy') return runHierarchyMode(opts);
 
   console.error(
     `Audit : ${opts.careers} carrières × ${opts.years} ans, seed ${opts.seed}, ${opts.workers} processus…`,
@@ -221,6 +223,71 @@ function runWorldMode(opts) {
   const empty = result.championsByYear.filter((c) => c.majorChampions === 0).length;
   lines.push(`Années sans champion majeur : ${empty}/${result.championsByYear.length}`);
   lines.push(`Incohérences finales : ${result.finalIssues.length}`);
+  console.log(lines.join('\n'));
+}
+
+/** Mode hiérarchie (étape 3) : mobilité, stabilité, ascensions, déclins. */
+function runHierarchyMode(opts) {
+  console.error(`Hiérarchie : ${opts.years} ans, seed ${opts.seed}…`);
+  const r = runHierarchyAudit({ seed: opts.seed, years: opts.years, sampleEveryYears: 10 });
+  const lines = [];
+  lines.push(`=== HIÉRARCHIE — seed ${opts.seed}, ${opts.years} ans ===`);
+  if (r.crash) lines.push(`PLANTAGE : ${r.crash.message} (${r.crash.stack})`);
+
+  lines.push('');
+  lines.push('--- Répartition des paliers ---');
+  lines.push(['année', 'équipes', 'tier 1', 'tier 2', 'tier 3', 'tier 4', 'tier 5'].map((h) => h.padStart(10)).join(''));
+  for (const s of r.samples) {
+    lines.push(
+      [s.year, s.teams, s.tiers[1] ?? 0, s.tiers[2] ?? 0, s.tiers[3] ?? 0, s.tiers[4] ?? 0, s.tiers[5] ?? 0]
+        .map((v) => String(v).padStart(10))
+        .join(''),
+    );
+  }
+
+  const m = r.mobility;
+  lines.push('');
+  lines.push('--- Mobilité ---');
+  lines.push(`Montées par saison    : ${m.promotionsPerSeason}`);
+  lines.push(`Descentes par saison  : ${m.relegationsPerSeason}`);
+  lines.push(`Saisons sans mouvement: ${m.seasonsWithoutMovement}/${r.years}`);
+  lines.push(
+    `Changements par organisation (${m.orgsTracked} suivies) : médiane ${m.changesMedian} | p90 ${m.changesP90}` +
+      ` | jamais bougé ${m.neverMoved} | ≥5 changements ${m.movedFiveOrMore}`,
+  );
+
+  const st = r.stability;
+  lines.push('');
+  lines.push('--- Stabilité ---');
+  lines.push(
+    `Durée passée à un palier : médiane ${st.tenureMedianYears} ans | p90 ${st.tenureP90Years} | max ${st.tenureMaxYears}`,
+  );
+
+  lines.push('');
+  lines.push('--- Ascension ---');
+  lines.push(
+    `Organisations montées au-dessus de leur point de départ : ${r.ascension.climbers}` +
+      ` | ayant atteint le sommet : ${r.ascension.reachedTop}` +
+      ` (médiane ${r.ascension.climbYearsMedian} ans, max ${r.ascension.climbYearsMax})`,
+  );
+
+  lines.push('');
+  lines.push('--- Déclin ---');
+  lines.push(
+    `Passées par le sommet : ${r.decline.everTop} | l'ayant quitté : ${r.decline.leftTop}` +
+      ` | y étant revenues : ${r.decline.returnedToTop} | disparues après déclin : ${r.decline.diedAfterDecline}`,
+  );
+
+  lines.push('');
+  lines.push('--- Trajectoires réellement survenues ---');
+  for (const [kind, t] of Object.entries(r.trajectories)) {
+    lines.push(`${kind.padEnd(10)} ${t.name} : ${t.path}`);
+  }
+
+  lines.push('');
+  lines.push(`Invariants violés : ${r.invariants.length}`);
+  for (const i of r.invariants.slice(0, 6)) lines.push(`  ${i.code} — ${i.detail}`);
+  lines.push(`Incohérences du validateur : ${r.issues.length}`);
   console.log(lines.join('\n'));
 }
 

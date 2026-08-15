@@ -74,6 +74,10 @@ export function createTeam(rng, { org, gameId, absWeek = 0, tierOverride = null 
     sharedWeeks: 0,
     created: absWeek,
     active: true,
+    // Une équipe appartient au circuit d'entrée jusqu'à ce qu'une présaison la
+    // place ailleurs : ce champ ne doit jamais être indéfini, un invariant de
+    // hiérarchie le vérifie.
+    division: 'amateur',
     // Résultats de la saison en cours ; archivés à chaque fin de saison.
     season: emptySeasonRecord(),
     history: [],
@@ -86,7 +90,18 @@ export function createTeam(rng, { org, gameId, absWeek = 0, tierOverride = null 
 }
 
 export function emptySeasonRecord() {
-  return { wins: 0, losses: 0, points: 0, played: 0, mapWins: 0, mapLosses: 0, placements: [] };
+  return {
+    wins: 0,
+    losses: 0,
+    points: 0,
+    played: 0,
+    mapWins: 0,
+    mapLosses: 0,
+    // Force cumulée des adversaires rencontrés : c'est elle qui distingue
+    // « domine son niveau » de « peut tenir au niveau supérieur » (étape 3).
+    oppStrengthSum: 0,
+    placements: [],
+  };
 }
 
 /** Salaire annuel de référence pour un poste dans cette organisation. */

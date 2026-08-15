@@ -62,9 +62,19 @@ test('chaque scène vivante conserve un circuit d’entrée après 30 ans', () =
     0,
     `scènes sans aucune équipe d'entrée sur l'année : ${without.map((s) => s.gameId).join(', ')}`,
   );
-  // Et ce circuit n'est pas résiduel : la plupart des scènes en ont plusieurs.
-  const plural = alive.filter((s) => (s.amateurMean ?? 0) >= 2).length;
-  assert.ok(plural >= alive.length / 2, `seulement ${plural}/${alive.length} scènes avec ≥2 équipes`);
+  // Et ce circuit n'est pas résiduel. On le juge sur son activité, non sur son
+  // stock : depuis que la hiérarchie est perméable (étape 3), les meilleures
+  // équipes d'entrée sont promues et le stock d'équilibre a baissé — 3,3 à 2,2
+  // en moyenne. Ce n'est pas un affaiblissement du circuit mais sa raison
+  // d'être, et le test doit mesurer le renouvellement plutôt qu'un effectif.
+  const idle = alive.filter((s) => (r.byScene[s.gameId]?.created ?? 0) < 5);
+  assert.deepEqual(
+    idle.map((s) => s.gameId),
+    [],
+    'scènes où presque aucune équipe d’entrée ne s’est formée en 30 ans',
+  );
+  const meanStock = alive.reduce((n, s) => n + (s.amateurMean ?? 0), 0) / alive.length;
+  assert.ok(meanStock >= 1.2, `stock moyen d'équipes d'entrée : ${meanStock.toFixed(1)}`);
 });
 
 // ---------------------------------------------------------------------------

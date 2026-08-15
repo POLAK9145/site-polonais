@@ -151,6 +151,9 @@ export function createPerson(rng, opts = {}) {
       minorTitles: 0,
       finals: 0,
       minorFinals: 0,
+      // Statut le plus élevé jamais atteint : il ne recule jamais, même quand
+      // l'organisation descend (étape 3, §9).
+      highestStatus: null,
       earnings: 0,
       seasonsPro: 0,
       peakRating: 0,

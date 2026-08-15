@@ -239,6 +239,11 @@ function applyMatchOutcome(world, result, teamA, teamB, rng) {
     team.season.played++;
     team.season.mapWins += team.id === teamA.id ? result.scoreA : result.scoreB;
     team.season.mapLosses += team.id === teamA.id ? result.scoreB : result.scoreA;
+    // Niveau réellement affronté, accumulé match par match : une saison ne se
+    // juge pas sans savoir contre qui elle a été jouée.
+    team.season.oppStrengthSum =
+      (team.season.oppStrengthSum ?? 0) +
+      (team.id === teamA.id ? result.strengthB : result.strengthA);
     if (won) {
       team.season.wins++;
       team.season.points += 3;

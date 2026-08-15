@@ -19,6 +19,7 @@ import { teamStrength } from './team.js';
 import { GAMES_BY_ID } from '../data/games.js';
 import { REGIONS_BY_ID } from '../data/regions.js';
 import { assignDivisions, canSustainLeague } from './amateur.js';
+import { applyHierarchyChanges } from './hierarchy.js';
 
 const LEAGUE_SIZE = 8;
 
@@ -327,9 +328,22 @@ export function runWeek(world, rng) {
 
 function awardPlacementPoints(world, comp) {
   const table = PLACEMENT_POINTS[comp.tierId] ?? PLACEMENT_POINTS.open;
+  const entrants = comp.teamIds?.length ?? comp.placements.length;
   for (const { teamId, rank } of comp.placements) {
     const pts = table[rank - 1] ?? 0;
     if (pts > 0) addPoints(world, teamId, comp.gameId, pts);
+    // Le classement de la saison, conservé sur l'équipe : la hiérarchie a
+    // besoin de savoir où une équipe a fini et à quel niveau elle jouait, et
+    // les compétitions terminées sont purgées quelques semaines plus tard.
+    const team = world.teams[teamId];
+    if (team?.season) {
+      (team.season.placements ??= []).push({
+        rank,
+        entrants,
+        tierId: comp.tierId,
+        tierLevel: comp.tierLevel,
+      });
+    }
   }
 }
 
@@ -450,48 +464,19 @@ export function endOfSeason(world, rng) {
 }
 
 /**
- * Une organisation amateur qui domine son circuit monte d'un cran ; une
- * organisation de ligue qui s'effondre descend. Le mouvement est lent :
- * il faut être bon ET avoir les moyens.
+ * Montées et descentes.
+ *
+ * La décision appartient à `hierarchy.js` : elle y est prise à l'échelle de la
+ * scène, séparément pour la montée et pour la descente, sur des composantes
+ * traçables. L'ancienne version faite ici échangeait mécaniquement la pire
+ * équipe de ligue contre la meilleure amateur d'une même région, et ne pouvait
+ * donc produire ni montée seule, ni descente seule.
+ *
+ * Le moment ne change pas : après les playoffs, avant `setupSeason`, qui
+ * redérivera les divisions des tiers ainsi modifiés.
  */
 function applyPromotionRelegation(world, rng) {
-  for (const gameState of Object.values(world.gameStates)) {
-    if (!gameState.alive) continue;
-    const scenes = scenesOf(world, gameState.gameId);
-    for (const teams of Object.values(scenes)) {
-      const league = teams.filter((t) => t.division === 'league');
-      const amateur = teams.filter((t) => t.division !== 'league');
-      if (league.length === 0 || amateur.length === 0) continue;
-
-      const leagueRanked = league
-        .map((t) => ({ t, pts: pointsFor(world, t.id, gameState.gameId) }))
-        .sort((a, b) => a.pts - b.pts);
-      const amateurRanked = amateur
-        .map((t) => ({ t, pts: pointsFor(world, t.id, gameState.gameId), power: teamPower(world, t) }))
-        .sort((a, b) => b.pts - a.pts || b.power - a.power);
-
-      const worst = leagueRanked[0];
-      const best = amateurRanked[0];
-      if (!worst || !best) continue;
-
-      const bestPower = teamPower(world, best.t);
-      const worstPower = teamPower(world, worst.t);
-      const bestOrg = world.orgs[best.t.orgId];
-      const worstOrg = world.orgs[worst.t.orgId];
-
-      // Promotion : il faut avoir été clairement meilleur, pas juste chanceux.
-      if (bestPower > worstPower * 0.97 && best.pts > 20 && bestOrg && worstOrg) {
-        best.t.division = 'league';
-        worst.t.division = 'amateur';
-        bestOrg.tier = clamp(bestOrg.tier + 1, 1, 5);
-        bestOrg.budget = Math.round(bestOrg.budget * 1.8 + 40000);
-        bestOrg.history.push({ week: world.week, text: `Promotion en ligue (${gameState.gameId})` });
-        worstOrg.tier = clamp(worstOrg.tier - 1, 1, 5);
-        worstOrg.budget = Math.round(worstOrg.budget * 0.6);
-        worstOrg.history.push({ week: world.week, text: `Relégation (${gameState.gameId})` });
-      }
-    }
-  }
+  return applyHierarchyChanges(world, rng, { leagueTarget: LEAGUE_SIZE });
 }
 
 /** Le calendrier déclenche les bonnes constructions au bon moment. */
