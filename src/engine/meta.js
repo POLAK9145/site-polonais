@@ -10,6 +10,7 @@ import { clamp, norm } from './rng.js';
 import { GAMES_BY_ID } from '../data/games.js';
 import { ALL_ATTRS } from './attributes.js';
 import { WEEKS_PER_YEAR, yearOf } from './time.js';
+import { initSceneLifecycle, updatePopularityFromVitality } from './scene.js';
 
 /** Attributs que peut privilégier une méta, par famille de jeu. */
 const META_ATTR_POOL = [
@@ -35,6 +36,7 @@ export function createGameState(rng, game, absWeek) {
     history: [],
   };
   state.meta = rollMeta(rng, game, absWeek, null);
+  initSceneLifecycle(state, game);
   return state;
 }
 
@@ -148,34 +150,15 @@ export function metaFit(person, gameState) {
   return clamp((emphasizedAvg - overall) * 0.14 * strength, -7, 7);
 }
 
-/** Popularité : marche lente, influencée par la santé compétitive du jeu. */
+/**
+ * Popularité d'une scène.
+ *
+ * Déléguée au cycle de vie (scene.js) : l'ancienne formule contenait une
+ * pression d'âge dont l'équilibre était `potentiel - 87,5`, c'est-à-dire
+ * négatif pour tous les jeux. Toutes les scènes mouraient nécessairement.
+ */
 export function updatePopularity(world, gameState, rng, weeks = 1) {
-  const game = GAMES_BY_ID[gameState.gameId];
-  if (!gameState.alive) return;
-  gameState.sceneAgeYears += weeks / WEEKS_PER_YEAR;
-
-  // Les scènes très anciennes s'érodent, sauf si leur potentiel est immense.
-  const agePressure = -clamp(norm(gameState.sceneAgeYears, 8, 22), 0, 1) * 0.14;
-  const potentialPull = (game.esportPotential - gameState.popularity) * 0.0016;
-  const noise = rng.gauss(0, 0.35);
-
-  gameState.popularity = clamp(
-    gameState.popularity + (agePressure + potentialPull) * weeks + noise * Math.sqrt(weeks),
-    2,
-    100,
-  );
-  gameState.esportHealth = clamp(
-    gameState.esportHealth + (gameState.popularity - gameState.esportHealth) * 0.01 * weeks,
-    2,
-    100,
-  );
-  gameState.prizeMultiplier = clamp(0.35 + (gameState.popularity / 100) * 1.35, 0.2, 1.7);
-
-  // Un jeu peut mourir. Les carrières bâties dessus doivent alors bifurquer.
-  if (gameState.popularity < 8 && gameState.esportHealth < 15) {
-    gameState.alive = false;
-    gameState.deathWeek = world.week;
-  }
+  updatePopularityFromVitality(world, gameState, rng, weeks);
 }
 
 export function metaLabel(gameState) {

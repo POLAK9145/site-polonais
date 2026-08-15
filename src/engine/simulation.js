@@ -408,6 +408,11 @@ function runPlayerWeek(session, person, report) {
     person.stats.peakWeek = world.week;
     career.counters.highestRating = rating;
   }
+  // Pic d'audience : l'audience finale seule masque les carrières qui ont
+  // été très populaires puis oubliées.
+  if (person.followers > (person.stats.peakFollowers ?? 0)) {
+    person.stats.peakFollowers = person.followers;
+  }
   if (!team) career.counters.weeksWithoutTeam = (career.counters.weeksWithoutTeam ?? 0) + 1;
   else career.counters.weeksWithoutTeam = 0;
   trackLowPoint(career, world, rating);

@@ -14,6 +14,7 @@ import { GAMES_BY_ID, GAMES } from '../data/games.js';
 import { REGIONS } from '../data/regions.js';
 import { progressPerson, updateForm, npcRoutine } from './progression.js';
 import { decayMetaShock, maybePatch, updatePopularity } from './meta.js';
+import { updateSceneLifecycle, SCENE_PHASES } from './scene.js';
 import { updateSynergy, coachQuality, teamStrength, detachFromAllTeams } from './team.js';
 import {
   createPerson,
@@ -95,6 +96,10 @@ export function simulateGames(world, rng) {
         tone: 'neutral',
       });
     }
+    // Réévaluation trimestrielle de la santé structurelle de la scène.
+    const phaseChange = updateSceneLifecycle(world, gameState, rng);
+    if (phaseChange) announceScenePhase(world, gameState, phaseChange);
+
     updatePopularity(world, gameState, rng, 1);
     if (!gameState.alive && !gameState.obituaryPosted) {
       gameState.obituaryPosted = true;
@@ -108,6 +113,36 @@ export function simulateGames(world, rng) {
       });
       closeScene(world, gameState.gameId);
     }
+  }
+}
+
+/** Une bascule de phase est un fait : on la publie comme telle (§47). */
+function announceScenePhase(world, gameState, change) {
+  const game = GAMES_BY_ID[gameState.gameId];
+  if (change.to === SCENE_PHASES.REVIVAL) {
+    world.news.push({
+      week: world.week,
+      headline: `${game.shortName} repart`,
+      body: `Nouvelle génération, investissements et compétitions relancées : la scène retrouve des couleurs.`,
+      gameId: game.id,
+      tone: 'positive',
+    });
+  } else if (change.to === SCENE_PHASES.DECLINING) {
+    world.news.push({
+      week: world.week,
+      headline: `${game.shortName} s'essouffle`,
+      body: `Audiences en baisse et structures qui hésitent à réinvestir.`,
+      gameId: game.id,
+      tone: 'negative',
+    });
+  } else if (change.to === SCENE_PHASES.DYING) {
+    world.news.push({
+      week: world.week,
+      headline: `La scène ${game.shortName} est en sursis`,
+      body: `Il ne reste qu'une poignée d'équipes actives.`,
+      gameId: game.id,
+      tone: 'negative',
+    });
   }
 }
 

@@ -15,6 +15,7 @@ import { clamp } from './rng.js';
 import { teamStrength, rosterPersons, teamGame, coachQuality } from './team.js';
 import { mods, effectiveRating } from './person.js';
 import { metaFit } from './meta.js';
+import { recordMatchDrama } from './scene.js';
 
 const LOGISTIC_K = 6.5;
 
@@ -153,6 +154,9 @@ export function simulateMatch(world, opts, rng) {
   };
 
   applyMatchOutcome(world, result, teamA, teamB, rng);
+  // Alimente la vitalité de la scène : upsets, comebacks et finales serrées
+  // sont ce qui garde un public (§scene.js).
+  recordMatchDrama(world, result);
   return result;
 }
 

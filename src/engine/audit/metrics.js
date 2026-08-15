@@ -86,6 +86,7 @@ export function careerMetrics(session, extra = {}) {
     seasonsPro: s.seasonsPro,
 
     followers: person.followers,
+    peakFollowers: person.stats.peakFollowers ?? person.followers,
     reputation: {
       pros: round(person.reputation.pros, 1),
       public: round(person.reputation.public, 1),
@@ -181,9 +182,22 @@ export function worldMetrics(world) {
   const topOrgShares = Object.values(byOrg).sort((a, b) => b - a);
   const top3Concentration = topOrgShares.slice(0, 3).reduce((a, b) => a + b, 0) / Math.max(1, top.length);
 
+  const teamsByTier = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  for (const t of activeTeams) {
+    const tier = orgs.find((o) => o.id === t.orgId)?.tier;
+    if (tier) teamsByTier[tier] = (teamsByTier[tier] ?? 0) + 1;
+  }
+  const teamsByDivision = { league: 0, amateur: 0, aucune: 0 };
+  for (const t of activeTeams) {
+    const key = t.division ?? 'aucune';
+    teamsByDivision[key] = (teamsByDivision[key] ?? 0) + 1;
+  }
+
   return {
     persons: persons.length,
     active: active.length,
+    teamsByTier,
+    teamsByDivision,
     retired: persons.filter((p) => p.status === STATUS.RETIRED).length,
     staff: persons.filter((p) => p.status === STATUS.STAFF).length,
     pros: active.filter((p) => p.status === STATUS.PRO).length,

@@ -152,6 +152,7 @@ export function createPerson(rng, opts = {}) {
       seasonsPro: 0,
       peakRating: 0,
       peakWeek: null,
+      peakFollowers: 0,
       internationalTitles: 0,
     },
 
