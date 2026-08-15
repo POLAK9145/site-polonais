@@ -301,7 +301,16 @@ export function promotionCase(world, team, reference) {
   const cost = tierOperatingCost(a.tier + 1) + a.salaryLoad;
   const funds = a.yearlyIncome + Math.max(0, a.budget);
   const coverage = cost > 0 ? funds / cost : 1;
-  add('capacity', `moyens couvrant ${Math.round(coverage * 100)} % du coût du niveau visé`, clamp((Math.min(coverage, 2) - 0.8) * 12, -20, 12));
+  //    Avoir de l'argent n'est pas un mérite sportif : la contribution est donc
+  //    nulle quand les moyens sont confortables, et négative quand ils sont
+  //    trop justes. Une version précédente accordait +12 à toute organisation
+  //    au-dessus du tier 1 — un décalage constant qui abaissait en réalité le
+  //    seuil d'éligibilité de 20 à 8.
+  add(
+    'capacity',
+    `moyens couvrant ${Math.round(coverage * 100)} % du coût du niveau visé`,
+    clamp((Math.min(coverage, 1.6) - 1.6) * 14, -22, 0),
+  );
   if (!a.rosterComplete) add('roster', 'effectif incomplet', -20);
 
   const score = factors.reduce((n, f) => n + f.delta, 0);
@@ -311,6 +320,12 @@ export function promotionCase(world, team, reference) {
   if (!a.rosterComplete) blockers.push('effectif incomplet');
   if (coverage < 0.35) blockers.push('moyens insuffisants');
   if (a.tier >= MAX_TIER) blockers.push('déjà au sommet');
+  // Une saison perdante ne se compense pas. Sans ce garde-fou, une équipe à
+  // 13 % de victoires montait du niveau 2 au niveau 3 parce qu'elle avait
+  // affronté des adversaires forts et qu'elle avait de l'argent — la trace l'a
+  // montré noir sur blanc. « Avoir eu une bonne saison » est la première
+  // condition du §1, pas une composante parmi d'autres.
+  if (a.winRatio !== null && a.winRatio < 0.42) blockers.push('saison perdante');
   if (entryBar && a.power < entryBar * 0.86) blockers.push('niveau trop éloigné du palier visé');
 
   return { assessment: a, factors, score, blockers, eligible: blockers.length === 0 && score >= 20 };
