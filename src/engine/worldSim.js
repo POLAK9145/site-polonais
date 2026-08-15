@@ -578,6 +578,11 @@ function pruneDeadStructures(world) {
     // par elle que l'interface retrouve un nom et un blason.
     if (Object.values(org.teams ?? {}).some((id) => world.teams[id])) continue;
     delete world.orgs[org.id];
+    // Le nom redevient disponible. Les index sont reconstruits à partir des
+    // organisations survivantes au chargement (`worldgen.js`) : ne pas les
+    // libérer ici ferait diverger une partie en cours d'une partie rechargée.
+    world.indexes?.takenOrgNames?.delete(org.name.toLowerCase());
+    world.indexes?.takenTags?.delete(org.tag);
     removed++;
   }
   return removed;
