@@ -8,12 +8,17 @@ objectivement l'avant et l'après de chaque correction (phase 2).
 - Suite : 1400 carrières × 20 ans + 2 mondes de 30 ans sans joueur + 120
   trajectoires de PNJ suivies sur 20 ans.
 - Empreinte des entrées : `25ba811283ffa763`
-- Moteur : commit `48c87c4` (**avant** l'étape 1 « renouvellement des scènes »).
-  Le champ `engineDirty` vaut `true` : au moment de l'enregistrement, les
-  fichiers de l'étape 1 étaient déjà écrits sur le disque mais **pas chargés**
-  par le processus, qui avait importé ses modules au démarrage. Le baseline
-  reflète donc bien le moteur d'avant correction — ce que confirment ses
-  chiffres (2 et 3 scènes vivantes à l'année 30).
+- Moteur mesuré : commit `48c87c4`, c'est-à-dire **avant** l'étape 1
+  « renouvellement des scènes ».
+
+  Précision nécessaire à qui relira l'historique : le fichier de baseline a
+  été *commité* dans `b017b23`, lequel contient aussi le code de l'étape 1
+  (`src/engine/scene.js`). Ce n'est pas une contradiction — l'enregistrement
+  tournait déjà lorsque ces fichiers ont été écrits sur le disque, et Node
+  avait importé ses modules au démarrage du processus. Les mesures reflètent
+  donc bien le moteur d'avant correction, ce que confirment à la fois le champ
+  `engineCommit` du JSON (`48c87c4`) et ses chiffres : 2 et 3 scènes vivantes
+  à l'année 30, là où le moteur corrigé en conserve 9.
 
 ## Ce qui est reproductible, et ce qui ne l'est pas
 
