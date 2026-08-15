@@ -1,17 +1,22 @@
 {
-  "name": "polonais-app",
-  "version": "1.0.0",
+  "name": "esport-career-sim",
+  "version": "0.1.0",
+  "description": "Simulateur de carrière e-sport procédural, jouable dans le navigateur.",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "node --test tests/*.test.js",
+    "test:watch": "node --test --watch tests/*.test.js"
   },
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
-    "vite": "^4.0.0",
-    "@vitejs/plugin-react": "^4.0.0"
+    "@vitejs/plugin-react": "^4.3.0",
+    "playwright": "^1.62.1",
+    "vite": "^5.4.0"
   }
 }

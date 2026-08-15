@@ -1,0 +1,467 @@
+/**
+ * Orchestration des saisons (§25).
+ *
+ * Construit la pyramide compétitive de chaque scène à chaque nouvelle année,
+ * puis fait vivre le calendrier : ligues, playoffs, international, mondiaux,
+ * circuit amateur. Gère aussi promotions et relégations — c'est ce qui rend
+ * l'ascension d'une petite structure réellement possible (§60).
+ */
+
+import { clamp } from './rng.js';
+import { PHASES, phaseOfWeek, weekOfYear, yearOf, absWeek } from './time.js';
+import {
+  createCompetition,
+  runCompetitionWeek,
+  sortedStandings,
+  COMP_TIERS,
+} from './competition.js';
+import { teamStrength } from './team.js';
+import { GAMES_BY_ID } from '../data/games.js';
+import { REGIONS_BY_ID } from '../data/regions.js';
+
+const LEAGUE_SIZE = 8;
+
+/** Points de saison attribués selon le niveau de la compétition et le rang. */
+const PLACEMENT_POINTS = {
+  open: [12, 7, 4, 2],
+  qualifier: [25, 15, 9, 5],
+  national: [60, 40, 26, 16, 10, 6, 4, 2],
+  regional: [120, 85, 60, 42, 30, 20, 12, 6],
+  international: [260, 190, 140, 100, 70, 50, 35, 20],
+  worlds: [500, 360, 260, 190, 130, 90, 60, 35],
+};
+
+export function ensureSeasonState(world) {
+  if (!world.seasonPoints) world.seasonPoints = {};
+  if (!world.seasonAwards) world.seasonAwards = [];
+  if (!world.activeCompetitionIds) world.activeCompetitionIds = [];
+}
+
+function pointsFor(world, teamId, gameId) {
+  ensureSeasonState(world);
+  if (!world.seasonPoints[gameId]) world.seasonPoints[gameId] = {};
+  return world.seasonPoints[gameId][teamId] ?? 0;
+}
+
+function addPoints(world, teamId, gameId, pts) {
+  if (!world.seasonPoints[gameId]) world.seasonPoints[gameId] = {};
+  world.seasonPoints[gameId][teamId] = (world.seasonPoints[gameId][teamId] ?? 0) + pts;
+}
+
+/** Toutes les équipes actives d'un jeu, groupées par région. */
+function scenesOf(world, gameId) {
+  const byRegion = {};
+  for (const team of Object.values(world.teams)) {
+    if (team.gameId !== gameId || !team.active) continue;
+    const org = world.orgs[team.orgId];
+    if (!org || !org.alive) continue;
+    (byRegion[org.regionId] ??= []).push(team);
+  }
+  return byRegion;
+}
+
+function teamPower(world, team) {
+  return teamStrength(world, team, { forMatch: false }).strength;
+}
+
+/**
+ * Présaison : on redessine les ligues de chaque scène.
+ * Les meilleures équipes forment la ligue régionale, les autres jouent le
+ * circuit amateur. Une équipe reléguée retrouve donc réellement le bas de
+ * la pyramide, avec des primes et une exposition dérisoires.
+ */
+export function setupSeason(world, rng) {
+  ensureSeasonState(world);
+  const season = yearOf(world.week);
+  world.seasonPoints = {};
+
+  for (const gameState of Object.values(world.gameStates)) {
+    if (!gameState.alive) continue;
+    const game = GAMES_BY_ID[gameState.gameId];
+    const scenes = scenesOf(world, game.id);
+
+    for (const [regionId, teams] of Object.entries(scenes)) {
+      const region = REGIONS_BY_ID[regionId];
+      const ranked = teams
+        .map((t) => ({ t, power: teamPower(world, t), tier: world.orgs[t.orgId].tier }))
+        .sort((a, b) => b.tier - a.tier || b.power - a.power);
+
+      const leagueTeams = ranked.slice(0, LEAGUE_SIZE).map((r) => r.t);
+      const amateurTeams = ranked.slice(LEAGUE_SIZE).map((r) => r.t);
+
+      for (const t of leagueTeams) t.division = 'league';
+      for (const t of amateurTeams) t.division = 'amateur';
+
+      if (leagueTeams.length >= 4) {
+        const tierId = region.strength >= 0.8 && game.popularity >= 60 ? 'REGIONAL' : 'NATIONAL';
+        const comp = createCompetition(world, {
+          name: `${game.shortName} ${region.short} — Split 1 ${season}`,
+          gameId: game.id,
+          tierId,
+          regionId,
+          teamIds: leagueTeams.map((t) => t.id),
+          kind: 'league',
+          startWeek: absWeek(season, 3),
+          weeksAvailable: 16,
+          format: 3,
+          season,
+        });
+        comp.splitIndex = 1;
+        world.competitions[comp.id] = comp;
+      }
+    }
+  }
+}
+
+/** Deuxième split : mêmes ligues, rosters éventuellement modifiés. */
+export function setupSplit2(world, rng) {
+  const season = yearOf(world.week);
+  for (const gameState of Object.values(world.gameStates)) {
+    if (!gameState.alive) continue;
+    const game = GAMES_BY_ID[gameState.gameId];
+    const scenes = scenesOf(world, game.id);
+    for (const [regionId, teams] of Object.entries(scenes)) {
+      const region = REGIONS_BY_ID[regionId];
+      const leagueTeams = teams.filter((t) => t.division === 'league');
+      if (leagueTeams.length < 4) continue;
+      const tierId = region.strength >= 0.8 && game.popularity >= 60 ? 'REGIONAL' : 'NATIONAL';
+      const comp = createCompetition(world, {
+        name: `${game.shortName} ${region.short} — Split 2 ${season}`,
+        gameId: game.id,
+        tierId,
+        regionId,
+        teamIds: leagueTeams.map((t) => t.id),
+        kind: 'league',
+        startWeek: absWeek(season, 27),
+        weeksAvailable: 16,
+        format: 3,
+        season,
+      });
+      comp.splitIndex = 2;
+      world.competitions[comp.id] = comp;
+    }
+  }
+}
+
+/** Playoffs : top 4 de chaque ligue terminée, demi-finales puis finale. */
+export function setupPlayoffs(world, splitIndex, rng) {
+  const season = yearOf(world.week);
+  const startWeek = splitIndex === 1 ? absWeek(season, 19) : absWeek(season, 43);
+  for (const comp of Object.values(world.competitions)) {
+    if (!comp) continue;
+    if (!comp || comp.season !== season || comp.splitIndex !== splitIndex || comp.kind !== 'league') continue;
+    const table = sortedStandings(comp).filter((s) => world.teams[s.teamId]?.active);
+    const qualified = table.slice(0, 4).map((s) => s.teamId);
+    if (qualified.length < 4) continue;
+    const game = GAMES_BY_ID[comp.gameId];
+    const region = REGIONS_BY_ID[comp.regionId];
+    const playoff = createCompetition(world, {
+      name: `${game.shortName} ${region.short} — Playoffs S${splitIndex} ${season}`,
+      gameId: comp.gameId,
+      tierId: comp.tierId.toUpperCase(),
+      regionId: comp.regionId,
+      teamIds: qualified,
+      kind: 'bracket',
+      startWeek,
+      format: 5,
+      season,
+    });
+    playoff.splitIndex = splitIndex;
+    playoff.isPlayoff = true;
+    world.competitions[playoff.id] = playoff;
+  }
+}
+
+/** International de mi-saison : les meilleures équipes du monde, par jeu. */
+export function setupInternational(world, rng) {
+  const season = yearOf(world.week);
+  for (const gameState of Object.values(world.gameStates)) {
+    if (!gameState.alive) continue;
+    const game = GAMES_BY_ID[gameState.gameId];
+    if (game.popularity < 35) continue;
+    const ranked = Object.values(world.teams)
+      .filter((t) => t.gameId === game.id && t.active && t.division === 'league')
+      .map((t) => ({ t, pts: pointsFor(world, t.id, game.id), power: teamPower(world, t) }))
+      .sort((a, b) => b.pts - a.pts || b.power - a.power)
+      .slice(0, 8);
+    if (ranked.length < 4) continue;
+    const comp = createCompetition(world, {
+      name: `${game.shortName} — Invitational ${season}`,
+      gameId: game.id,
+      tierId: 'INTERNATIONAL',
+      regionId: null,
+      teamIds: ranked.map((r) => r.t.id),
+      kind: 'bracket',
+      startWeek: absWeek(season, 23),
+      format: 5,
+      season,
+    });
+    world.competitions[comp.id] = comp;
+  }
+}
+
+/** Championnat du monde : l'aboutissement de la saison. */
+export function setupWorlds(world, rng) {
+  const season = yearOf(world.week);
+  for (const gameState of Object.values(world.gameStates)) {
+    if (!gameState.alive) continue;
+    const game = GAMES_BY_ID[gameState.gameId];
+    if (game.popularity < 30) continue;
+    const ranked = Object.values(world.teams)
+      .filter((t) => t.gameId === game.id && t.active && t.roster.length > 0)
+      .map((t) => ({ t, pts: pointsFor(world, t.id, game.id), power: teamPower(world, t) }))
+      .sort((a, b) => b.pts - a.pts || b.power - a.power)
+      .slice(0, 8);
+    if (ranked.length < 4) continue;
+    const comp = createCompetition(world, {
+      name: `${game.shortName} — Championnat du monde ${season}`,
+      gameId: game.id,
+      tierId: 'WORLDS',
+      regionId: null,
+      teamIds: ranked.map((r) => r.t.id),
+      kind: 'bracket',
+      startWeek: absWeek(season, 47),
+      format: 5,
+      season,
+    });
+    comp.isWorlds = true;
+    world.competitions[comp.id] = comp;
+  }
+}
+
+/**
+ * Circuit amateur : petits tournois réguliers, ouverts aux équipes hors
+ * ligue. C'est la porte d'entrée du §11 — sans lui, un joueur qui débute
+ * n'aurait littéralement rien à jouer.
+ */
+export function setupOpenTournament(world, rng) {
+  const season = yearOf(world.week);
+  for (const gameState of Object.values(world.gameStates)) {
+    if (!gameState.alive) continue;
+    const game = GAMES_BY_ID[gameState.gameId];
+    const scenes = scenesOf(world, game.id);
+    for (const [regionId, teams] of Object.entries(scenes)) {
+      const pool = teams.filter((t) => t.division !== 'league' && t.roster.length >= game.teamSize);
+      if (pool.length < 4) continue;
+      const region = REGIONS_BY_ID[regionId];
+      const entrants = rng.sample(pool, Math.min(8, pool.length));
+      const comp = createCompetition(world, {
+        name: `Open ${game.shortName} ${region.short}`,
+        gameId: game.id,
+        tierId: pool.length >= 6 ? 'QUALIFIER' : 'OPEN',
+        regionId,
+        teamIds: entrants.map((t) => t.id),
+        kind: 'bracket',
+        startWeek: world.week,
+        format: 3,
+        season,
+      });
+      // Tout se joue le même week-end.
+      comp.bracket.rounds.forEach((r) => {
+        r.week = world.week;
+      });
+      comp.isOpen = true;
+      world.competitions[comp.id] = comp;
+    }
+  }
+}
+
+/** Joue les rencontres de la semaine et récolte les compétitions terminées. */
+export function runWeek(world, rng) {
+  ensureSeasonState(world);
+  const played = [];
+  const finished = [];
+  for (const comp of Object.values(world.competitions)) {
+    if (!comp || comp.status === 'done') continue;
+    const before = comp.status;
+    const results = runCompetitionWeek(world, comp, rng);
+    played.push(...results);
+    if (comp.status === 'done' && before !== 'done') {
+      awardPlacementPoints(world, comp);
+      recordTitles(world, comp);
+      finished.push(comp);
+      // Les résultats détaillés ont servi : classements, titres et timeline
+      // sont écrits. Les conserver ferait grossir la sauvegarde sans fin.
+      comp.results = [];
+      comp.rounds = [];
+      comp.bracket = null;
+      if (comp.tierLevel <= 2) world.competitions[comp.id] = null;
+    }
+  }
+  for (const [id, comp] of Object.entries(world.competitions)) {
+    if (comp === null) delete world.competitions[id];
+  }
+  return { played, finished };
+}
+
+function awardPlacementPoints(world, comp) {
+  const table = PLACEMENT_POINTS[comp.tierId] ?? PLACEMENT_POINTS.open;
+  for (const { teamId, rank } of comp.placements) {
+    const pts = table[rank - 1] ?? 0;
+    if (pts > 0) addPoints(world, teamId, comp.gameId, pts);
+  }
+}
+
+/** Un titre entre dans l'histoire de l'équipe, de l'org et des joueurs. */
+function recordTitles(world, comp) {
+  if (!comp.championId) return;
+  const team = world.teams[comp.championId];
+  if (!team) return;
+  team.titles++;
+  team.history.push({ week: world.week, text: `Vainqueur de ${comp.name}`, compId: comp.id });
+  const org = world.orgs[team.orgId];
+  if (org) {
+    org.titles++;
+    org.reputation = clamp(org.reputation + comp.tierLevel * 1.6, 0, 100);
+    org.history.push({ week: world.week, text: `${comp.name} remporté`, compId: comp.id });
+  }
+  for (const pid of team.roster) {
+    const p = world.persons[pid];
+    if (!p) continue;
+    p.stats.titles++;
+    if (comp.tierLevel >= 5) p.stats.internationalTitles++;
+    p.reputation.pros = clamp(p.reputation.pros + comp.tierLevel * 1.8, 0, 100);
+    p.reputation.public = clamp(p.reputation.public + comp.tierLevel * 2.2, 0, 100);
+    p.morale = clamp(p.morale + 12, 0, 100);
+  }
+  const runner = comp.runnerUpId ? world.teams[comp.runnerUpId] : null;
+  if (runner) {
+    for (const pid of runner.roster) {
+      const p = world.persons[pid];
+      if (p) p.stats.finals++;
+    }
+  }
+}
+
+/**
+ * Fin de saison : promotions/relégations, archivage, remise à zéro.
+ * L'archivage est aussi ce qui empêche la sauvegarde de grossir sans fin —
+ * on ne conserve que les résumés, pas les milliers de matchs joués.
+ */
+export function endOfSeason(world, rng) {
+  const season = yearOf(world.week);
+  const archive = [];
+
+  for (const comp of Object.values(world.competitions)) {
+    if (!comp) continue;
+    if (comp.season !== season) continue;
+    // Seules les compétitions qui comptent entrent dans les archives : les
+    // milliers de tournois amateurs joués sur quinze ans feraient exploser
+    // la taille de sauvegarde sans rien apporter au récit.
+    if (comp.tierLevel < 3) continue;
+    archive.push({
+      id: comp.id,
+      name: comp.name,
+      gameId: comp.gameId,
+      tierId: comp.tierId,
+      season,
+      championId: comp.championId,
+      runnerUpId: comp.runnerUpId,
+      placements: comp.placements.slice(0, 4),
+      prizePool: comp.prizePool,
+    });
+  }
+  world.seasonArchive.push({ season, competitions: archive });
+  if (world.seasonArchive.length > 6) world.seasonArchive.shift();
+
+  // Les joueurs professionnels comptabilisent une saison de plus.
+  for (const p of Object.values(world.persons)) {
+    if (p.status === 'pro' || p.status === 'semipro') p.stats.seasonsPro++;
+  }
+
+  applyPromotionRelegation(world, rng);
+
+  // Purge : on ne garde en mémoire vive que la saison écoulée.
+  for (const comp of Object.values(world.competitions)) {
+    if (!comp) continue;
+    if (comp.season < season) delete world.competitions[comp.id];
+    else comp.results = [];
+  }
+
+  for (const team of Object.values(world.teams)) {
+    team.season = { wins: 0, losses: 0, points: 0, played: 0, mapWins: 0, mapLosses: 0, placements: [] };
+  }
+}
+
+/**
+ * Une organisation amateur qui domine son circuit monte d'un cran ; une
+ * organisation de ligue qui s'effondre descend. Le mouvement est lent :
+ * il faut être bon ET avoir les moyens.
+ */
+function applyPromotionRelegation(world, rng) {
+  for (const gameState of Object.values(world.gameStates)) {
+    if (!gameState.alive) continue;
+    const scenes = scenesOf(world, gameState.gameId);
+    for (const teams of Object.values(scenes)) {
+      const league = teams.filter((t) => t.division === 'league');
+      const amateur = teams.filter((t) => t.division !== 'league');
+      if (league.length === 0 || amateur.length === 0) continue;
+
+      const leagueRanked = league
+        .map((t) => ({ t, pts: pointsFor(world, t.id, gameState.gameId) }))
+        .sort((a, b) => a.pts - b.pts);
+      const amateurRanked = amateur
+        .map((t) => ({ t, pts: pointsFor(world, t.id, gameState.gameId), power: teamPower(world, t) }))
+        .sort((a, b) => b.pts - a.pts || b.power - a.power);
+
+      const worst = leagueRanked[0];
+      const best = amateurRanked[0];
+      if (!worst || !best) continue;
+
+      const bestPower = teamPower(world, best.t);
+      const worstPower = teamPower(world, worst.t);
+      const bestOrg = world.orgs[best.t.orgId];
+      const worstOrg = world.orgs[worst.t.orgId];
+
+      // Promotion : il faut avoir été clairement meilleur, pas juste chanceux.
+      if (bestPower > worstPower * 0.97 && best.pts > 20 && bestOrg && worstOrg) {
+        best.t.division = 'league';
+        worst.t.division = 'amateur';
+        bestOrg.tier = clamp(bestOrg.tier + 1, 1, 5);
+        bestOrg.budget = Math.round(bestOrg.budget * 1.8 + 40000);
+        bestOrg.history.push({ week: world.week, text: `Promotion en ligue (${gameState.gameId})` });
+        worstOrg.tier = clamp(worstOrg.tier - 1, 1, 5);
+        worstOrg.budget = Math.round(worstOrg.budget * 0.6);
+        worstOrg.history.push({ week: world.week, text: `Relégation (${gameState.gameId})` });
+      }
+    }
+  }
+}
+
+/** Le calendrier déclenche les bonnes constructions au bon moment. */
+export function onWeekStart(world, rng) {
+  ensureSeasonState(world);
+  const w = weekOfYear(world.week);
+  const phase = phaseOfWeek(world.week);
+
+  if (w === 1) setupSeason(world, rng);
+  else if (w === 19) setupPlayoffs(world, 1, rng);
+  else if (w === 23) setupInternational(world, rng);
+  else if (w === 27) setupSplit2(world, rng);
+  else if (w === 43) setupPlayoffs(world, 2, rng);
+  else if (w === 47) setupWorlds(world, rng);
+
+  // Circuit amateur : un rendez-vous toutes les trois semaines.
+  if (w >= 4 && w <= 46 && w % 3 === 1) setupOpenTournament(world, rng);
+
+  return phase;
+}
+
+export function onWeekEnd(world, rng) {
+  if (weekOfYear(world.week) === 52) endOfSeason(world, rng);
+}
+
+export function currentCompetitionsFor(world, teamId) {
+  return Object.values(world.competitions).filter(
+    (c) => c && c.status !== 'done' && c.teamIds.includes(teamId),
+  );
+}
+
+export function seasonRankingFor(world, gameId, limit = 20) {
+  ensureSeasonState(world);
+  const pts = world.seasonPoints[gameId] ?? {};
+  return Object.entries(pts)
+    .map(([teamId, points]) => ({ teamId, points }))
+    .sort((a, b) => b.points - a.points)
+    .slice(0, limit);
+}
