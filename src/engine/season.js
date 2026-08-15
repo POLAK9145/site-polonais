@@ -369,15 +369,32 @@ function recordTitles(world, comp) {
     if (major) p.stats.titles++;
     else p.stats.minorTitles = (p.stats.minorTitles ?? 0) + 1;
     if (comp.tierLevel >= 5) p.stats.internationalTitles++;
-    p.reputation.pros = clamp(p.reputation.pros + comp.tierLevel * 1.8, 0, 100);
-    p.reputation.public = clamp(p.reputation.public + comp.tierLevel * 2.2, 0, 100);
+    // La réputation ne décroît nulle part dans le moteur : tout gain répété
+    // finit donc par saturer l'échelle. Tant qu'aucun tournoi d'entrée n'était
+    // joué, la question ne se posait pas ; avec une quinzaine d'opens par an,
+    // 1,8 point par victoire suffisait à porter n'importe quel joueur de
+    // circuit amateur à 100 de réputation professionnelle. Or gagner un open
+    // ne vous fait pas remarquer des professionnels — cela vous fait connaître
+    // localement.
+    if (major) p.reputation.pros = clamp(p.reputation.pros + comp.tierLevel * 1.8, 0, 100);
+    p.reputation.public = clamp(
+      p.reputation.public + (major ? comp.tierLevel * 2.2 : 0.6),
+      0,
+      100,
+    );
     p.morale = clamp(p.morale + 12, 0, 100);
   }
   const runner = comp.runnerUpId ? world.teams[comp.runnerUpId] : null;
   if (runner) {
     for (const pid of runner.roster) {
       const p = world.persons[pid];
-      if (p) p.stats.finals++;
+      if (!p) continue;
+      // Même règle que pour les titres, et pour la même raison : une finale
+      // d'open perdue n'est pas une finale perdue. Compter les deux ensemble
+      // faisait de « l'éternel second » 43 % des carrières — chacun accumulant
+      // des dizaines de finales d'entrée pour au plus un vrai titre.
+      if (major) p.stats.finals++;
+      else p.stats.minorFinals = (p.stats.minorFinals ?? 0) + 1;
     }
   }
 }
