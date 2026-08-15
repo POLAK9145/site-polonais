@@ -20,6 +20,8 @@ import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { runOneCareer, runWorldOnly, runNpcTrajectories } from '../src/engine/audit/runner.js';
+import { runAmateurAudit } from '../src/engine/audit/amateurAudit.js';
+import { GAMES_BY_ID } from '../src/data/games.js';
 import { POLICY_IDS } from '../src/engine/audit/policies.js';
 import { buildReport } from '../src/engine/audit/report.js';
 import { formatReport } from '../src/engine/audit/format.js';
@@ -43,7 +45,10 @@ function parseArgs(argv) {
     if (!m) continue;
     const [, key, value] = m;
     if (key in out) {
-      if (typeof out[key] === 'number') out[key] = Number(value);
+      // Un seed peut être un mot : `normalizeSeed` accepte les deux, et forcer
+      // Number() transformait « eco-1 » en NaN.
+      if (key === 'seed') out[key] = value !== undefined && /^-?\d+$/.test(value) ? Number(value) : value;
+      else if (typeof out[key] === 'number') out[key] = Number(value);
       else if (typeof out[key] === 'boolean') out[key] = value === undefined ? true : value !== 'false';
       else out[key] = value;
     }
@@ -147,6 +152,7 @@ async function main() {
 
   if (opts.mode === 'trace') return runTraceMode(opts);
   if (opts.mode === 'world') return runWorldMode(opts);
+  if (opts.mode === 'amateur') return runAmateurMode(opts);
 
   console.error(
     `Audit : ${opts.careers} carrières × ${opts.years} ans, seed ${opts.seed}, ${opts.workers} processus…`,
@@ -215,6 +221,103 @@ function runWorldMode(opts) {
   const empty = result.championsByYear.filter((c) => c.majorChampions === 0).length;
   lines.push(`Années sans champion majeur : ${empty}/${result.championsByYear.length}`);
   lines.push(`Incohérences finales : ${result.finalIssues.length}`);
+  console.log(lines.join('\n'));
+}
+
+/**
+ * Mode écosystème d'entrée (étape 2) : distribution PAR SCÈNE et flux réels du
+ * bas de la pyramide. Une moyenne ne dit rien ici — deux scènes à zéro et une
+ * à neuf donnent la même moyenne qu'un monde sain.
+ */
+function runAmateurMode(opts) {
+  console.error(`Écosystème amateur : ${opts.years} ans, seed ${opts.seed}…`);
+  const r = runAmateurAudit({ seed: opts.seed, years: opts.years, sampleEveryYears: 10 });
+  const lines = [];
+  lines.push(`=== ÉCOSYSTÈME D'ENTRÉE — seed ${opts.seed}, ${opts.years} ans ===`);
+  if (r.crash) lines.push(`PLANTAGE : ${r.crash.message} (${r.crash.stack})`);
+
+  for (const snap of r.snapshots) {
+    const alive = snap.scenes.filter((s) => s.alive);
+    lines.push('');
+    const amMean = alive.reduce((n, s) => n + (s.amateurMean ?? s.amateurTeams), 0);
+    lines.push(
+      `--- année ${snap.year} — ${alive.length} scènes vivantes, ` +
+        `${Math.round(amMean * 10) / 10} équipes amateurs en moyenne sur l’année, ` +
+        `${alive.reduce((n, s) => n + s.leagueTeams, 0)} en ligue ---`,
+    );
+    lines.push(
+      ['scène', 'ligue', 'amat.moy', 'min', 'max', 'sans éq.', 'max', 'âge moy.', 'sem. moy.', 'pros', 'popul.']
+        .map((h) => h.padStart(10))
+        .join(''),
+    );
+    for (const s of alive) {
+      lines.push(
+        [
+          GAMES_BY_ID[s.gameId].shortName,
+          s.leagueTeams,
+          s.amateurMean ?? s.amateurTeams,
+          s.amateurMin ?? '—',
+          s.amateurMax ?? '—',
+          s.unattachedMean ?? s.unattached,
+          s.unattachedMax ?? '—',
+          s.unattachedAgeMean ?? '—',
+          s.unattachedWeeksMean ?? '—',
+          s.pros,
+          s.population,
+        ]
+          .map((v) => String(v).padStart(10))
+          .join(''),
+      );
+    }
+  }
+
+  lines.push('');
+  lines.push('--- Flux cumulés du circuit d’entrée ---');
+  lines.push(`Équipes amateurs créées      : ${r.flows.amateurTeamsCreated}`);
+  lines.push(`Équipes amateurs dissoutes   : ${r.flows.amateurTeamsDissolved}`);
+  lines.push(`Équipes amateurs promues     : ${r.flows.amateurToLeague}`);
+  lines.push(`Arrivées dans une équipe am. : ${r.flows.joinsAmateur}`);
+  lines.push(`Départs d’une équipe amateur : ${r.flows.departuresAmateur}`);
+  lines.push(`  dont vers une équipe de ligue : ${r.flows.amateurToPro}`);
+  const ls = r.amateurLifespanYears;
+  lines.push(
+    ls.count
+      ? `Durée de vie des équipes dissoutes (ans) : p10 ${ls.p10} | médiane ${ls.median} | p90 ${ls.p90} | max ${ls.max}`
+      : 'Aucune équipe amateur dissoute.',
+  );
+
+  lines.push('');
+  lines.push('--- Devenir des nouveaux venus, par année d’arrivée (§9) ---');
+  lines.push(
+    ['cohorte', 'suivi(ans)', 'taille', 'trouvent', '%', 'médiane', 'p90', 'immédiat%', '>1an%', 'jamais%']
+      .map((h) => h.padStart(10))
+      .join(''),
+  );
+  for (const [year, c] of Object.entries(r.cohorts)) {
+    if (!c.size) continue;
+    lines.push(
+      [year, c.followUpYears, c.size, c.foundTeam, c.foundTeamPct, c.medianWeeks, c.p90Weeks, c.immediatePct, c.overOneYearPct, c.neverPct]
+        .map((v) => String(v).padStart(10))
+        .join('') + (c.followUpYears < 3 ? '   (suivi trop court)' : ''),
+    );
+  }
+
+  lines.push('');
+  lines.push('--- Accessibilité du bas de la pyramide (§12, à ne pas maximiser) ---');
+  for (const [gameId, a] of Object.entries(r.accessibility)) {
+    if (a.rate === null) continue;
+    lines.push(
+      `${GAMES_BY_ID[gameId].shortName.padEnd(10)} ${a.placed}/${a.young} jeunes en équipe (${Math.round(a.rate * 100)} %)`,
+    );
+  }
+
+  lines.push('');
+  const p = r.population;
+  lines.push(
+    `Population finale : ${p.total} (${p.rostered} en équipe, ${p.unattached} libres, ${p.staff} staff, ${p.retired} retraités)`,
+  );
+  lines.push(`Incohérences finales : ${r.issues.length}`);
+  for (const i of r.issues.slice(0, 5)) lines.push(`  ${i.code ?? i.type}: ${i.message ?? JSON.stringify(i)}`);
   console.log(lines.join('\n'));
 }
 

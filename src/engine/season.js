@@ -18,6 +18,7 @@ import {
 import { teamStrength } from './team.js';
 import { GAMES_BY_ID } from '../data/games.js';
 import { REGIONS_BY_ID } from '../data/regions.js';
+import { assignDivisions, canSustainLeague } from './amateur.js';
 
 const LEAGUE_SIZE = 8;
 
@@ -84,10 +85,17 @@ export function setupSeason(world, rng) {
       const region = REGIONS_BY_ID[regionId];
       const ranked = teams
         .map((t) => ({ t, power: teamPower(world, t), tier: world.orgs[t.orgId].tier }))
-        .sort((a, b) => b.tier - a.tier || b.power - a.power);
+        .sort((a, b) => b.tier - a.tier || b.power - a.power)
+        .map((r) => r.t);
 
-      const leagueTeams = ranked.slice(0, LEAGUE_SIZE).map((r) => r.t);
-      const amateurTeams = ranked.slice(LEAGUE_SIZE).map((r) => r.t);
+      // La ligue se compose de ce que les organisations peuvent soutenir, et
+      // non des huit premières du classement : sinon une scène réduite
+      // absorbe tout le monde et n'a plus aucun niveau d'entrée.
+      const { league: leagueTeams, amateur: amateurTeams } = assignDivisions(
+        world,
+        ranked,
+        LEAGUE_SIZE,
+      );
 
       for (const t of leagueTeams) t.division = 'league';
       for (const t of amateurTeams) t.division = 'amateur';
@@ -240,29 +248,52 @@ export function setupOpenTournament(world, rng) {
     if (!gameState.alive) continue;
     const game = GAMES_BY_ID[gameState.gameId];
     const scenes = scenesOf(world, game.id);
-    for (const [regionId, teams] of Object.entries(scenes)) {
-      const pool = teams.filter((t) => t.division !== 'league' && t.roster.length >= game.teamSize);
-      if (pool.length < 4) continue;
-      const region = REGIONS_BY_ID[regionId];
-      const entrants = rng.sample(pool, Math.min(8, pool.length));
-      const comp = createCompetition(world, {
-        name: `Open ${game.shortName} ${region.short}`,
-        gameId: game.id,
-        tierId: pool.length >= 6 ? 'QUALIFIER' : 'OPEN',
-        regionId,
-        teamIds: entrants.map((t) => t.id),
-        kind: 'bracket',
-        startWeek: world.week,
-        format: 3,
-        season,
-      });
-      // Tout se joue le même week-end.
-      comp.bracket.rounds.forEach((r) => {
-        r.week = world.week;
-      });
-      comp.isOpen = true;
-      world.competitions[comp.id] = comp;
+
+    // Un circuit d'entrée se joue à l'échelle de la SCÈNE, pas d'une seule
+    // région. Exiger quatre équipes amateurs dans une même région rendait ces
+    // tournois impossibles : les deux ou trois équipes d'entrée d'un jeu sont
+    // réparties entre ses régions, et aucun tournoi ne se créait jamais.
+    const eligible = [];
+    for (const teams of Object.values(scenes)) {
+      for (const t of teams) {
+        if (t.division === 'league') continue;
+        if (t.roster.length < game.teamSize) continue;
+        eligible.push(t);
+      }
     }
+    if (eligible.length < 3) continue;
+
+    // On privilégie un tournoi régional quand une région est assez fournie —
+    // c'est plus crédible — et on retombe sur un open inter-régional sinon.
+    const byRegion = {};
+    for (const t of eligible) {
+      const regionId = world.orgs[t.orgId]?.regionId;
+      if (regionId) (byRegion[regionId] ??= []).push(t);
+    }
+    const richest = Object.entries(byRegion).sort((a, b) => b[1].length - a[1].length)[0];
+    const regional = richest && richest[1].length >= 4;
+    const pool = regional ? richest[1] : eligible;
+    const regionId = regional ? richest[0] : null;
+    const label = regional ? REGIONS_BY_ID[regionId].short : 'Open';
+
+    const entrants = rng.sample(pool, Math.min(8, pool.length));
+    const comp = createCompetition(world, {
+      name: `Open ${game.shortName} ${label}`,
+      gameId: game.id,
+      tierId: pool.length >= 6 ? 'QUALIFIER' : 'OPEN',
+      regionId,
+      teamIds: entrants.map((t) => t.id),
+      kind: 'bracket',
+      startWeek: world.week,
+      format: 3,
+      season,
+    });
+    // Tout se joue le même week-end.
+    comp.bracket.rounds.forEach((r) => {
+      r.week = world.week;
+    });
+    comp.isOpen = true;
+    world.competitions[comp.id] = comp;
   }
 }
 

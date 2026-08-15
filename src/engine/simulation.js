@@ -19,7 +19,7 @@ import {
   effectiveRating,
 } from './person.js';
 import { createOrg, createTeam } from './org.js';
-import { addToRoster, removeFromRoster, computeSynergyTarget, detachFromAllTeams } from './team.js';
+import { addToRoster, removeFromRoster, computeSynergyTarget, detachFromAllTeams, recordStint } from './team.js';
 import { progressPerson, updateForm } from './progression.js';
 import { decayMetaShock } from './meta.js';
 import { onWeekStart, onWeekEnd, runWeek as runSeasonWeek, ensureSeasonState } from './season.js';
@@ -31,6 +31,7 @@ import {
   runYearlyCycle,
   runMarket,
   fillEmptyRosters,
+  runAmateurFormation,
   decayWorldRelations,
   retirePerson,
 } from './worldSim.js';
@@ -235,6 +236,7 @@ export function advanceWeek(session) {
   simulateTeams(world, rng);
   simulateOrgEconomy(world, rng);
   runMarket(world, rng);
+  runAmateurFormation(world, rng);
   fillEmptyRosters(world, rng);
   decayWorldRelations(world);
 
@@ -326,6 +328,7 @@ export function advanceWorldOnly(session) {
   simulateTeams(world, rng);
   simulateOrgEconomy(world, rng);
   runMarket(world, rng);
+  runAmateurFormation(world, rng);
   fillEmptyRosters(world, rng);
   decayWorldRelations(world);
   runSeasonWeek(world, rng);
@@ -818,7 +821,7 @@ export function foundTeam(session, teamName = null) {
 
   addToRoster(world, team, person.id, { initial: true });
   person.status = STATUS.AMATEUR;
-  person.teamHistory.push({ teamId: team.id, orgId: org.id, gameId: game.id, from: world.week, to: null });
+  recordStint(world, person, team, org, world.week);
 
   const recruits = recruitablePool(world, person, game).slice(0, game.teamSize - 1);
   for (const r of recruits) {
@@ -826,7 +829,7 @@ export function foundTeam(session, teamName = null) {
     const i = world.freeAgents.indexOf(r.id);
     if (i >= 0) world.freeAgents.splice(i, 1);
     r.status = STATUS.AMATEUR;
-    r.teamHistory.push({ teamId: team.id, orgId: org.id, gameId: game.id, from: world.week, to: null });
+    recordStint(world, r, team, org, world.week);
     adjustRelation(world, person.id, r.id, 8, {
       week: world.week,
       text: `Vous avez fondé ${org.name} ensemble.`,

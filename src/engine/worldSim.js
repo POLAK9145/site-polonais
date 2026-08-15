@@ -24,11 +24,12 @@ import {
   effectiveRating,
 } from './person.js';
 import { createOrg, createTeam } from './org.js';
-import { addToRoster, assignRoles } from './team.js';
+import { addToRoster, assignRoles, recordStint } from './team.js';
 import { releasePlayer, runNpcTransferWindow } from './transfers.js';
 import { decayRelations } from './relations.js';
 import { weekOfYear, WEEKS_PER_YEAR } from './time.js';
 import { dissolveOrg } from './events/defs/worldEvents.js';
+import { formAmateurTeams, dissolveFailedAmateurTeams } from './amateur.js';
 
 const NPC_BATCH = 4;
 
@@ -265,8 +266,35 @@ export function spawnNewGeneration(world, rng, { intake = null } = {}) {
       if (!t.active || t.gameId !== game.id) return n;
       return n + Math.max(0, game.teamSize - t.roster.length);
     }, 0);
-    const pool = world.freeAgents.filter((id) => world.persons[id]?.gameId === game.id).length;
-    const count = intake ?? Math.max(2, Math.round((gs.popularity / 100) * 6) + Math.max(0, openSlots - pool));
+    const pool = Object.values(world.persons).filter(
+      (p) =>
+        p.gameId === game.id &&
+        !p.teamId &&
+        p.status !== STATUS.RETIRED &&
+        p.status !== STATUS.STAFF,
+    ).length;
+
+    // Une scène en bonne santé attire beaucoup plus de joueurs qu'elle n'a de
+    // places en ligue. Ce surplus EST la base amateur : sans lui, les équipes
+    // d'entrée n'ont aucun joueur à recruter et ne peuvent pas se former.
+    const activeRegionCount = new Set(
+      Object.values(world.teams)
+        .filter((t) => t.active && t.gameId === game.id)
+        .map((t) => world.orgs[t.orgId]?.regionId)
+        .filter(Boolean),
+    ).size;
+    const desiredReservoir = Math.round(
+      game.teamSize * 1.6 * (gs.vitality ?? 0.5) * (gs.popularity / 100) * Math.max(1, activeRegionCount),
+    );
+
+    const count =
+      intake ??
+      Math.max(
+        2,
+        Math.round((gs.popularity / 100) * 6) +
+          Math.max(0, openSlots - pool) +
+          Math.max(0, desiredReservoir - pool),
+      );
     const regions = REGIONS.filter((r) =>
       Object.values(world.orgs).some((o) => o.alive && o.regionId === r.id && o.teams[game.id]),
     );
@@ -297,7 +325,16 @@ export function spawnNewGeneration(world, rng, { intake = null } = {}) {
   return spawned;
 }
 
-/** Création d'organisations quand une scène se dépeuple. */
+/**
+ * Création d'organisations quand une scène se dépeuple.
+ *
+ * Ces structures naissent au bas de la pyramide (tier 1). Auparavant elles
+ * naissaient en `tier: rng.int(1, 2)`, et comme le tier 2 est capable de
+ * soutenir une ligue, chaque repeuplement gonflait la ligue au lieu de nourrir
+ * la base : mesuré sur 40 ans, la ligue Stadium passait de 10 à 18 équipes
+ * pendant que le circuit amateur retombait à 0-1. Une ligue ne doit grandir
+ * que par promotion (étape 3), jamais par apparition spontanée.
+ */
 export function refreshOrgs(world, rng) {
   for (const game of GAMES) {
     const gs = world.gameStates[game.id];
@@ -314,13 +351,13 @@ export function refreshOrgs(world, rng) {
       if (!rng.chance(0.5)) continue;
       const org = createOrg(rng, {
         regionId,
-        tier: rng.int(1, 2),
+        tier: 1,
         takenNames: world.indexes.takenOrgNames,
         takenTags: world.indexes.takenTags,
         absWeek: world.week,
       });
       world.orgs[org.id] = org;
-      const team = createTeam(rng, { org, gameId: game.id, absWeek: world.week });
+      const team = createTeam(rng, { org, gameId: game.id, absWeek: world.week, tierOverride: 1 });
       world.teams[team.id] = team;
       // On la remplit avec des agents libres crédibles.
       const pool = world.freeAgents
@@ -330,7 +367,7 @@ export function refreshOrgs(world, rng) {
         addToRoster(world, team, p.id, { initial: true });
         const i = world.freeAgents.indexOf(p.id);
         if (i >= 0) world.freeAgents.splice(i, 1);
-        p.teamHistory.push({ teamId: team.id, orgId: org.id, gameId: game.id, from: world.week, to: null });
+        recordStint(world, p, team, org, world.week);
       }
       world.news.push({
         week: world.week,
@@ -355,20 +392,39 @@ export function pruneWorld(world) {
   // population et la taille de sauvegarde croissent sans fin.
   const toDelete = [];
   const playerId = world.playerId;
+  const employedStaff = staffInPost(world);
   for (const p of Object.values(world.persons)) {
     if (p.isPlayer || p.protectedFromPruning) continue;
     // On ne supprime jamais quelqu'un qui compte dans l'histoire du joueur.
     if (playerId && world.relations[relKeyLocal(playerId, p.id)]) continue;
 
     if (p.status === STATUS.RETIRED) {
-      if (world.week - (p.retiredWeek ?? 0) < WEEKS_PER_YEAR / 2) continue;
-      const notable = p.stats.titles > 0 || p.stats.peakRating > 84;
-      if (!notable) toDelete.push(p.id);
+      const yearsGone = (world.week - (p.retiredWeek ?? 0)) / WEEKS_PER_YEAR;
+      if (yearsGone < 0.5) continue;
+      // La mémoire du monde n'est pas infinie, et « notable » ne peut pas être
+      // un état permanent : avec un critère binaire, les retraités notables
+      // s'accumulaient sans borne (1 → 420 en quarante ans). On modélise donc
+      // un oubli progressif — la durée du souvenir est proportionnelle à ce que
+      // la personne a réellement accompli.
+      if (yearsGone > memoryYears(p)) toDelete.push(p.id);
+      continue;
+    }
+    if (p.status === STATUS.STAFF) {
+      // Un entraîneur sans poste finit par quitter le milieu. Sans cette
+      // sortie, le staff n'était jamais élagué et grossissait indéfiniment
+      // (106 → 334 en quarante ans) : les reconversions entraient dans
+      // l'écosystème sans jamais pouvoir en sortir.
+      if (employedStaff.has(p.id)) {
+        p.idleYears = 0;
+        continue;
+      }
+      p.idleYears = (p.idleYears ?? 0) + 1;
+      if (p.idleYears > 2 && p.idleYears > memoryYears(p)) toDelete.push(p.id);
       continue;
     }
     // Agents libres oubliés : au bout de trois ans sans équipe et sans
     // niveau, ils ont simplement arrêté.
-    if (!p.teamId && p.status !== STATUS.STAFF) {
+    if (!p.teamId) {
       p.weeksUnattached = (p.weeksUnattached ?? 0) + 1;
       if (p.weeksUnattached > 2 && p.stats.peakRating < 64) toDelete.push(p.id);
     } else {
@@ -381,35 +437,172 @@ export function pruneWorld(world) {
   // (chaque année amène une génération) et la sauvegarde finit par dépasser
   // le quota du navigateur. On oublie en priorité ceux dont l'absence ne
   // change rien : sans équipe, sans palmarès, sans lien avec le joueur.
+  let removed = 0;
   const overflow = Object.keys(world.persons).length - MAX_POPULATION;
   if (overflow > 0) {
-    // On ne vide jamais une scène qui a encore des places à pourvoir :
-    // supprimer ses agents libres laisserait des équipes à trois joueurs
-    // pour cinq places, ce qui est bien pire qu'une sauvegarde un peu plus
-    // lourde.
-    const surplus = sceneSurplus(world);
-    const expendable = Object.values(world.persons)
-      .filter((p) => {
-        if (p.isPlayer || p.protectedFromPruning) return false;
-        if (playerId && world.relations[relKeyLocal(playerId, p.id)]) return false;
-        if (p.teamId) return false;
-        if (p.stats.titles > 0) return false;
-        return (surplus[p.gameId] ?? 0) > 0;
-      })
-      .sort((a, b) => a.stats.peakRating - b.stats.peakRating);
+    const keepable = (p) => {
+      if (p.isPlayer || p.protectedFromPruning) return false;
+      if (playerId && world.relations[relKeyLocal(playerId, p.id)]) return false;
+      return true;
+    };
 
-    let removed = 0;
-    for (const p of expendable) {
+    // 1. D'abord la mémoire. Oublier un retraité ou un entraîneur sans poste ne
+    //    prive aucune scène de joueurs : c'est le seul élagage réellement
+    //    gratuit, et c'est là que se trouvait toute la croissance mesurée.
+    const forgettable = Object.values(world.persons)
+      .filter(
+        (p) =>
+          keepable(p) &&
+          (p.status === STATUS.RETIRED ||
+            (p.status === STATUS.STAFF && !employedStaff.has(p.id))),
+      )
+      .sort((a, b) => memoryYears(a) - memoryYears(b));
+    for (const p of forgettable) {
       if (removed >= overflow) break;
-      if ((surplus[p.gameId] ?? 0) <= 0) continue;
-      surplus[p.gameId]--;
       forgetPerson(world, p.id);
       removed++;
     }
-    return toDelete.length + removed;
+
+    // 2. Ensuite seulement les joueurs disponibles, et jamais dans une scène
+    //    qui a encore des places à pourvoir : supprimer ses agents libres
+    //    laisserait des équipes à trois joueurs pour cinq places, ce qui est
+    //    bien pire qu'une sauvegarde un peu plus lourde.
+    if (removed < overflow) {
+      const surplus = sceneSurplus(world);
+      const expendable = Object.values(world.persons)
+        .filter((p) => {
+          if (!keepable(p)) return false;
+          if (p.teamId) return false;
+          if (p.status === STATUS.RETIRED || p.status === STATUS.STAFF) return false;
+          if (p.stats.titles > 0) return false;
+          return (surplus[p.gameId] ?? 0) > 0;
+        })
+        .sort((a, b) => a.stats.peakRating - b.stats.peakRating);
+
+      for (const p of expendable) {
+        if (removed >= overflow) break;
+        if ((surplus[p.gameId] ?? 0) <= 0) continue;
+        surplus[p.gameId]--;
+        forgetPerson(world, p.id);
+        removed++;
+      }
+    }
   }
 
-  return toDelete.length;
+  // Toujours, y compris après un dépassement de population : c'est ici que les
+  // structures mortes disparaissent, et la population est justement plafonnée
+  // chaque année, si bien qu'un `return` anticipé les rendait éternelles.
+  pruneDeadStructures(world);
+  trimStructureHistories(world);
+  return toDelete.length + removed;
+}
+
+/** Nombre d'entrées d'historique conservées par équipe et par organisation. */
+const MAX_STRUCTURE_HISTORY = 20;
+
+/**
+ * Borne les historiques de structures.
+ *
+ * `recordTitles` ajoute une ligne à l'équipe ET à l'organisation à chaque titre.
+ * Depuis que le circuit d'entrée joue réellement ses tournois — une quinzaine
+ * par an et par scène — ces tableaux devenaient la première source de
+ * croissance de la sauvegarde : 711 Ko sur 3 392 à vingt ans, sans borne. Les
+ * compteurs (`titles`) portent le palmarès ; l'historique n'a besoin de porter
+ * que le récit récent.
+ */
+function trimStructureHistories(world) {
+  for (const team of Object.values(world.teams)) {
+    if (team.history?.length > MAX_STRUCTURE_HISTORY) {
+      team.history.splice(0, team.history.length - MAX_STRUCTURE_HISTORY);
+    }
+  }
+  for (const org of Object.values(world.orgs)) {
+    if (org.history?.length > MAX_STRUCTURE_HISTORY) {
+      org.history.splice(0, org.history.length - MAX_STRUCTURE_HISTORY);
+    }
+  }
+}
+
+/**
+ * Oublie les structures mortes que plus personne ne mentionne.
+ *
+ * Le circuit d'entrée crée une organisation par équipe amateur, et une équipe
+ * amateur vit en médiane un an : sur vingt ans, 534 organisations et équipes
+ * mortes s'accumulaient dans la sauvegarde, qui atteignait 3 392 Ko pour un
+ * quota de 2 600. La population était bornée, mais pas les structures.
+ *
+ * On ne supprime que ce qui n'est plus référencé : ni par l'historique d'une
+ * personne encore présente, ni par un contrat, ni par les archives de saison,
+ * ni par une compétition en cours. Sans cette précaution, l'interface
+ * afficherait « équipe inconnue » dans la carrière d'un joueur.
+ */
+function pruneDeadStructures(world) {
+  const keepTeams = new Set();
+  const keepOrgs = new Set();
+
+  for (const p of Object.values(world.persons)) {
+    if (p.teamId) keepTeams.add(p.teamId);
+    if (p.orgId) keepOrgs.add(p.orgId);
+    if (p.contract?.orgId) keepOrgs.add(p.contract.orgId);
+    // L'historique des passages n'oblige à rien conserver : depuis
+    // `recordStint`, chaque entrée porte le nom de l'organisation. Un ancien
+    // club dissous reste donc lisible dans une carrière sans que sa structure
+    // encombre la sauvegarde.
+  }
+  for (const comp of Object.values(world.competitions)) {
+    if (!comp) continue;
+    for (const id of comp.teamIds ?? []) keepTeams.add(id);
+    if (comp.championId) keepTeams.add(comp.championId);
+    if (comp.runnerUpId) keepTeams.add(comp.runnerUpId);
+  }
+  for (const season of world.seasonArchive ?? []) {
+    for (const comp of season.competitions ?? []) {
+      if (comp.championId) keepTeams.add(comp.championId);
+      if (comp.runnerUpId) keepTeams.add(comp.runnerUpId);
+      for (const pl of comp.placements ?? []) if (pl.teamId) keepTeams.add(pl.teamId);
+    }
+  }
+  for (const id of Object.keys(world.seasonPoints ?? {})) keepTeams.add(id);
+
+  let removed = 0;
+  for (const team of Object.values(world.teams)) {
+    if (team.active || team.isSelfTeam) continue;
+    if (keepTeams.has(team.id)) continue;
+    delete world.teams[team.id];
+    removed++;
+  }
+  for (const org of Object.values(world.orgs)) {
+    if (org.alive || org.isSelfOrg) continue;
+    if (keepOrgs.has(org.id)) continue;
+    // Une organisation dont une équipe est conservée doit l'être aussi : c'est
+    // par elle que l'interface retrouve un nom et un blason.
+    if (Object.values(org.teams ?? {}).some((id) => world.teams[id])) continue;
+    delete world.orgs[org.id];
+    removed++;
+  }
+  return removed;
+}
+
+/**
+ * Durée, en années, pendant laquelle le monde se souvient de quelqu'un.
+ * Un joueur ordinaire est oublié dès sa retraite ; un multiple champion
+ * international reste une référence pendant des décennies.
+ */
+function memoryYears(p) {
+  const titles = p.stats?.internationalTitles ?? 0;
+  const peak = p.stats?.peakRating ?? 0;
+  return Math.min(40, titles * 6 + Math.max(0, peak - 78) * 1.2);
+}
+
+/** Identifiants du staff réellement en poste dans une équipe active. */
+function staffInPost(world) {
+  const ids = new Set();
+  for (const team of Object.values(world.teams)) {
+    if (!team.active) continue;
+    if (team.coachId) ids.add(team.coachId);
+    if (team.managerId) ids.add(team.managerId);
+  }
+  return ids;
 }
 
 /** Population maximale conservée en mémoire (et donc en sauvegarde). */
@@ -469,8 +662,16 @@ export function runYearlyCycle(world, rng) {
   const retired = runRetirements(world, rng);
   const spawned = spawnNewGeneration(world, rng);
   refreshOrgs(world, rng);
+  // Les équipes d'entrée qui n'ont rien produit disparaissent : c'est la
+  // contrepartie de leur formation libre.
+  const folded = dissolveFailedAmateurTeams(world, rng);
   const pruned = pruneWorld(world);
-  return { retired: retired.length, spawned: spawned.length, pruned };
+  return { retired: retired.length, spawned: spawned.length, pruned, folded: folded.length };
+}
+
+/** Formation spontanée d'équipes amateurs, à partir des joueurs disponibles. */
+export function runAmateurFormation(world, rng) {
+  return formAmateurTeams(world, rng);
 }
 
 /** Le marché des transferts, hors joueur. */
@@ -529,13 +730,7 @@ export function fillEmptyRosters(world, rng) {
           objectives: 'progression',
         };
       }
-      candidate.teamHistory.push({
-        teamId: team.id,
-        orgId: org.id,
-        gameId: team.gameId,
-        from: world.week,
-        to: null,
-      });
+      recordStint(world, candidate, team, org, world.week);
       filled.push({ teamId: team.id, personId: candidate.id });
       missing--;
     }

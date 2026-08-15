@@ -257,6 +257,26 @@ export function detachFromAllTeams(world, personId) {
   return removed;
 }
 
+/**
+ * Enregistre un passage en équipe dans l'historique d'une personne.
+ *
+ * L'entrée porte le NOM de l'organisation, pas seulement son identifiant.
+ * C'est ce qui permet d'oublier les structures mortes : un souvenir doit se
+ * suffire à lui-même. Sans cela, chaque équipe amateur dissoute devait rester
+ * en mémoire pour que son nom reste lisible, et la sauvegarde accumulait
+ * 504 structures fantômes en vingt ans.
+ */
+export function recordStint(world, person, team, org, week) {
+  person.teamHistory.push({
+    teamId: team.id,
+    orgId: org?.id ?? team.orgId,
+    orgName: org?.name ?? world.orgs[team.orgId]?.name ?? null,
+    gameId: team.gameId,
+    from: week,
+    to: null,
+  });
+}
+
 export function addToRoster(world, team, personId, { initial = false, asSub = false } = {}) {
   if (team.roster.includes(personId) || team.subs.includes(personId)) return false;
   // Personne ne peut appartenir à deux effectifs simultanément.

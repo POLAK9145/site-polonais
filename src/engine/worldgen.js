@@ -15,7 +15,7 @@ import { GAMES, GAMES_BY_ID } from '../data/games.js';
 import { REGIONS } from '../data/regions.js';
 import { createPerson, STATUS, resetPersonCounter } from './person.js';
 import { createOrg, createTeam, resetOrgCounters } from './org.js';
-import { addToRoster, assignRoles, computeSynergyTarget } from './team.js';
+import { addToRoster, assignRoles, computeSynergyTarget, recordStint } from './team.js';
 import { createGameState } from './meta.js';
 import { resetCompCounter } from './competition.js';
 import { absWeek } from './time.js';
@@ -168,7 +168,7 @@ function fillRoster(world, rng, team, game, tier, now) {
       p.contract = makeInitialContract(world, rng, p, team, tier, now);
     }
     addToRoster(world, team, p.id, { initial: true });
-    p.teamHistory.push({ teamId: team.id, orgId: team.orgId, gameId: game.id, from: now, to: null });
+    recordStint(world, p, team, world.orgs[team.orgId], now);
   }
   // Un roster existe depuis un moment : sa cohésion est déjà proche de sa
   // cible, avec la dispersion qu'on attend d'équipes plus ou moins récentes.

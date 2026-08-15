@@ -19,7 +19,7 @@ import {
   mods,
   STATUS,
 } from './person.js';
-import { teamNeeds, teamStrength, addToRoster, removeFromRoster, rosterPersons, detachFromAllTeams } from './team.js';
+import { teamNeeds, teamStrength, addToRoster, removeFromRoster, rosterPersons, detachFromAllTeams, recordStint } from './team.js';
 import { salaryBand } from './org.js';
 import { relationValue, adjustRelation, endTeammateBond, REL_TAGS, getRelation } from './relations.js';
 import { isTransferWindow, isMajorTransferWindow } from './time.js';
@@ -280,13 +280,7 @@ export function signPlayer(world, person, offer, { week }) {
     objectives: offer.objectives,
   };
   person.status = org.tier >= 3 ? STATUS.PRO : org.tier === 2 ? STATUS.SEMIPRO : STATUS.AMATEUR;
-  person.teamHistory.push({
-    teamId: team.id,
-    orgId: org.id,
-    gameId: team.gameId,
-    from: week,
-    to: null,
-  });
+  recordStint(world, person, team, org, week);
 
   // Nouveaux coéquipiers : les relations démarrent maintenant.
   for (const mate of rosterPersons(world, team)) {
