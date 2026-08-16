@@ -311,7 +311,7 @@ export function runReleases(world, rng, { maxReleases = 6 } = {}) {
     if (released.length >= maxReleases) break;
     const org = world.orgs[team.orgId];
     const game = GAMES_BY_ID[team.gameId];
-    if (!game || team.roster.length <= game.teamSize) continue;
+    if (!game || team.roster.length < game.teamSize) continue;
 
     const salaries = team.roster.reduce(
       (n, id) => n + (world.persons[id]?.contract?.salary ?? 0),
@@ -325,7 +325,7 @@ export function runReleases(world, rng, { maxReleases = 6 } = {}) {
       if (!person || person.isPlayer || !person.contract) continue;
 
       const factors = [];
-      const add = (key, label, delta) => factors.push({ key, label, delta });
+      const add = (key, label, delta) => factors.push({ key, label, delta: Math.round(delta * 10) / 10 });
       const rating = baseRating(person, game);
       const mates = team.roster
         .filter((x) => x !== id)
@@ -354,6 +354,12 @@ export function runReleases(world, rng, { maxReleases = 6 } = {}) {
         add('age', `${Math.round(a)} ans en fin de cycle`, 8);
       }
       if (score < 26) continue;
+      // On ne se sépare de quelqu'un que si on peut le remplacer. C'est cette
+      // condition — et non l'existence d'un banc — qui rend un licenciement
+      // responsable : la première version exigeait un effectif en surnombre,
+      // or aucune équipe de ce moteur n'a de remplaçant (c'est le sujet de
+      // l'étape 5), et pas un seul licenciement ne survenait en dix ans.
+      if (!hasReplacement(world, team, game, rating)) continue;
       if (!rng.chance(clamp(score / 90, 0.05, 0.5))) continue;
 
       if (isTracing()) {
@@ -371,6 +377,17 @@ export function runReleases(world, rng, { maxReleases = 6 } = {}) {
     }
   }
   return released;
+}
+
+/** Existe-t-il, dans le vivier, quelqu'un d'au moins équivalent ? */
+function hasReplacement(world, team, game, rating) {
+  for (const id of world.freeAgents) {
+    const p = world.persons[id];
+    if (!p || p.gameId !== team.gameId) continue;
+    if (p.status === STATUS.RETIRED || p.status === STATUS.STAFF) continue;
+    if (baseRating(p, game) >= rating - 1) return true;
+  }
+  return false;
 }
 
 /** Statistiques de vivacité du marché (§S), pour l'audit. */

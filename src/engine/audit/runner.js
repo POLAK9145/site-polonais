@@ -268,6 +268,14 @@ export function runNpcTrajectories({ seed, years = 20, sample = 120 }) {
       teamsSeen: new Set(p.teamId ? [p.teamId] : []),
       peakSeen: 0,
       gamesSeen: new Set([p.gameId]),
+      // Dernier état observé, relevé AVANT tout oubli. Sans cela, un PNJ élagué
+      // par `pruneWorld` est lu comme « oublié » et non comme retraité : 104 des
+      // 120 PNJ suivis tombaient dans ce cas et la part de retraités mesurée
+      // s'effondrait de 0,758 à 0,133 sans que le monde ait changé de
+      // comportement.
+      lastStatus: p.status,
+      lastTitles: p.stats.titles,
+      retiredAgeSeen: null,
     }));
 
   const byId = new Map(tracked.map((t) => [t.id, t]));
@@ -281,6 +289,11 @@ export function runNpcTrajectories({ seed, years = 20, sample = 120 }) {
       if (p.teamId) t.teamsSeen.add(p.teamId);
       t.gamesSeen.add(p.gameId);
       t.peakSeen = Math.max(t.peakSeen, p.stats.peakRating);
+      t.lastStatus = p.status;
+      t.lastTitles = p.stats.titles;
+      if (p.retiredWeek && t.retiredAgeSeen === null) {
+        t.retiredAgeSeen = Math.round(((p.retiredWeek - p.birthWeek) / WEEKS_PER_YEAR) * 10) / 10;
+      }
     }
   }
 
@@ -290,14 +303,16 @@ export function runNpcTrajectories({ seed, years = 20, sample = 120 }) {
       id: t.id,
       startAge: Math.round(t.startAge * 10) / 10,
       alive: !!p,
-      status: p?.status ?? 'oublié',
+      // Le statut du dernier relevé, qu'il soit encore en mémoire ou non.
+      status: t.lastStatus,
+      forgotten: !p,
       teams: t.teamsSeen.size,
       games: t.gamesSeen.size,
       peak: Math.round(t.peakSeen * 10) / 10,
       ceiling: Math.round(t.ceilingSnapshot),
       growth: Math.round(t.growth * 100) / 100,
-      titles: p?.stats.titles ?? 0,
-      retiredAge: p?.retiredWeek ? Math.round(((p.retiredWeek - p.birthWeek) / WEEKS_PER_YEAR) * 10) / 10 : null,
+      titles: p?.stats.titles ?? t.lastTitles,
+      retiredAge: t.retiredAgeSeen,
       // Talent gâché : gros plafond, pic très en dessous (§9).
       wastedTalent: t.ceilingSnapshot > 88 && t.peakSeen < t.ceilingSnapshot - 16,
       // Surperformance : petit plafond estimé, pic élevé.

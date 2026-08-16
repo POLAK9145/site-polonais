@@ -80,7 +80,10 @@ export function sceneChangeCase(world, person) {
   //    est une raison en soi (§H, « meilleure compatibilité avec son profil »).
   const fit = bestAptitudeGain(world, person);
   if (fit && fit.gain > 2) {
-    add('fit', `profil mieux adapté à ${fit.game.shortName} (+${Math.round(fit.gain)} d'aptitude)`, clamp(fit.gain * 3, 0, 26));
+    // On ne nomme pas la scène : celle qu'il rejoindra est tirée parmi
+    // plusieurs, et citer ici la meilleure aptitude produirait une explication
+    // qui ne correspond pas au mouvement observé.
+    add('fit', `profil mieux adapté à une autre scène (+${Math.round(fit.gain)} d'aptitude)`, clamp(fit.gain * 3, 0, 26));
   }
 
   // 4. Son adaptabilité, et ce qu'il connaît déjà ailleurs.
