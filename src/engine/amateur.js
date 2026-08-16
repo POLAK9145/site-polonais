@@ -267,15 +267,24 @@ export function dissolveFailedAmateurTeams(world, rng) {
     // pour tout le monde, la mortalité du bas de pyramide avec lui : le nombre
     // de structures montait de 155 à 218, saturait la population du monde, et
     // l'élagage effaçait la totalité des retraités (85 → 0).
-    // Calibrage : le terme précédent se déclenchait pour la quasi-totalité des
-    // structures d'entrée, puisqu'elles étaient toutes dans le rouge. Une
-    // réserve inférieure à deux ans de charges retrouve cette fréquence, avec
-    // cette fois une raison : une structure communautaire vit d'une saison sur
-    // l'autre, et une mauvaise année suffit à l'arrêter.
+    // Une structure du circuit d'entrée n'a pas de permanence institutionnelle.
+    // C'est la définition même du niveau : `ORG_TIERS` place le tier 1 entre 0
+    // et 9 000, c'est-à-dire « à peu près rien ». Elle se défait parce que le
+    // groupe se sépare, pas parce qu'elle fait faillite.
+    //
+    // Ce terme était auparavant porté par `org.budget <= 0`, vrai pour la
+    // totalité de ces structures puisqu'elles étaient insolvables par
+    // construction. Il n'était donc pas financier, il était structurel — et le
+    // réparer côté comptable l'a éteint : le recyclage du circuit d'entrée est
+    // tombé de plus de 60 % à 50 %. Aucun test de trésorerie ne peut le
+    // remplacer, car le réinvestissement (étape 6) ramène toutes les structures
+    // à une année de réserve : la grandeur ne discrimine plus rien. On l'écrit
+    // donc pour ce qu'il est.
+    risk += 0.12;
+    // À quoi s'ajoute une détresse réelle quand la réserve ne couvre même pas
+    // les charges d'une demi-saison.
     const charges = operatingCost(world, org) + payroll(world, org);
-    const runway = org.budget / Math.max(1, charges);
-    if (runway < 0.5) risk += 0.22;
-    else if (runway < 2) risk += 0.12;
+    if (org.budget < charges * 0.5) risk += 0.15;
 
     // Un espoir crédible dans l'effectif retient le projet.
     const hasProspect = players.some(
