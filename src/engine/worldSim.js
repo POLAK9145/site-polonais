@@ -461,14 +461,27 @@ export function pruneWorld(world) {
     // 1. D'abord la mémoire. Oublier un retraité ou un entraîneur sans poste ne
     //    prive aucune scène de joueurs : c'est le seul élagage réellement
     //    gratuit, et c'est là que se trouvait toute la croissance mesurée.
-    const forgettable = Object.values(world.persons)
-      .filter(
-        (p) =>
-          keepable(p) &&
-          (p.status === STATUS.RETIRED ||
-            (p.status === STATUS.STAFF && !employedStaff.has(p.id))),
-      )
-      .sort((a, b) => memoryYears(a) - memoryYears(b));
+    //    Mais avec une réserve. Cette passe prenait les retraités **sans
+    //    limite** : dès que le monde tournait à son plafond, la totalité des
+    //    retraités disparaissait chaque année. Le défaut est resté invisible
+    //    tant qu'il restait de la place, puis s'est manifesté d'un coup quand le
+    //    nombre de structures a augmenté — 85 retraités conservés, puis zéro.
+    //    Un monde qui ne se souvient de personne n'a plus d'histoire, ce qui
+    //    contredit la prémisse du jeu. On protège donc les plus notables et les
+    //    plus récents, et la pression se déplace sur ce dont l'absence ne change
+    //    rien : les agents libres surnuméraires (étape 2 ci-dessous).
+    const retirees = Object.values(world.persons)
+      .filter((p) => keepable(p) && p.status === STATUS.RETIRED)
+      // Le monde se souvient de ce qui a marqué, et de ce qui est récent.
+      .sort((a, b) => memoryYears(b) - memoryYears(a) || (b.retiredWeek ?? 0) - (a.retiredWeek ?? 0));
+    const idleStaff = Object.values(world.persons).filter(
+      (p) => keepable(p) && p.status === STATUS.STAFF && !employedStaff.has(p.id),
+    );
+    // Les moins mémorables d'abord — c'est-à-dire la fin de la liste triée.
+    const forgettable = [
+      ...idleStaff,
+      ...retirees.slice(MEMORY_QUOTA).reverse(),
+    ];
     for (const p of forgettable) {
       if (removed >= overflow) break;
       forgetPerson(world, p.id);
@@ -624,6 +637,17 @@ function staffInPost(world) {
 
 /** Population maximale conservée en mémoire (et donc en sauvegarde). */
 export const MAX_POPULATION = 700;
+
+/**
+ * Nombre de retraités que le monde garde en mémoire, même sous pression.
+ *
+ * Ce n'est pas un plafond de population supplémentaire : le plafond reste
+ * `MAX_POPULATION`, et donc la sauvegarde reste bornée. C'est un **ordre
+ * d'oubli** : la mémoire n'est plus la première chose sacrifiée. Sa valeur est
+ * celle de l'équilibre observé avant que le nombre de structures n'augmente
+ * (85 retraités conservés).
+ */
+export const MEMORY_QUOTA = 85;
 
 /**
  * Agents libres excédentaires par jeu : ceux dont la scène n'a pas besoin.
