@@ -364,7 +364,7 @@ export function refreshOrgs(world, rng) {
       // n'était jamais atteint et ne décidait de rien ; l'économie réparée, il
       // est devenu la seule règle. Même grandeur que pour le circuit d'entrée :
       // une scène riche porte plus de structures qu'une scène en sommeil.
-      if (count >= sceneTeamCapacity(world, game.id) + 1) continue;
+      if (count >= sceneTeamCapacity(world, game.id)) continue;
       if (!rng.chance(0.5)) continue;
       const org = createOrg(rng, {
         regionId,
