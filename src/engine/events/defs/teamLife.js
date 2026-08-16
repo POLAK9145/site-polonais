@@ -360,9 +360,20 @@ export const teamLifeEvents = [
       const needs = teamNeeds(ctx.world, team);
       const deserved = ctx.rating >= needs.targetRating - 3 || ctx.person.form > 2;
       if (isBenched && deserved) {
-        const i = team.subs.indexOf(ctx.person.id);
-        team.subs.splice(i, 1);
-        team.roster.push(ctx.person.id);
+        // Revenir du banc, c'est prendre la place de quelqu'un — pas ajouter un
+        // siège. Cette ligne empilait le joueur dans le cinq de départ sans
+        // vérifier qu'une place s'y trouvait : sur un jeu solo, dont l'effectif
+        // vaut 1, l'équipe se retrouvait avec deux titulaires pour une place.
+        // Mesuré sur les 1400 carrières du baseline : 2 occurrences, toutes deux
+        // sur `stadiumkings` et `ironfist`, et toutes deux impliquant le joueur.
+        const promoted = reclaimStartingSpot(ctx, team);
+        if (!promoted) {
+          ctx.fx.morale(-8).stress(6);
+          ctx.fx.log('Le staff reconnaît vos progrès, mais la place n’est pas libre.', {
+            kind: 'result',
+          });
+          return 'On vous dit de patienter : personne ne cède sa place.';
+        }
         ctx.fx.morale(14).flag('benched', false);
         ctx.fx.log('Retour dans le cinq de départ.', { kind: 'result', important: true });
         ctx.fx.memory('comeback', 'Retour dans l’équipe', 'Vous avez repris votre place à la force du travail.');
@@ -542,6 +553,39 @@ export const teamLifeEvents = [
     ],
   },
 ];
+
+/**
+ * Fait passer le joueur du banc au cinq de départ, en respectant la taille de
+ * l'effectif.
+ *
+ * Deux cas : soit une place est libre et il la prend, soit l'effectif est plein
+ * et il faut que quelqu'un lui cède la sienne — le maillon faible, qui rejoint
+ * le banc. Si ce maillon faible n'existe pas (effectif d'un seul joueur qui est
+ * déjà lui), personne ne sort et la promotion n'a pas lieu.
+ *
+ * Renvoie `true` si le joueur est désormais titulaire.
+ */
+function reclaimStartingSpot(ctx, team) {
+  const size = ctx.game?.teamSize ?? 1;
+  const i = team.subs.indexOf(ctx.person.id);
+  if (i < 0) return false;
+
+  if (team.roster.length < size) {
+    team.subs.splice(i, 1);
+    team.roster.push(ctx.person.id);
+    return true;
+  }
+
+  const weakest = teamNeeds(ctx.world, team).weakestId;
+  if (!weakest || weakest === ctx.person.id) return false;
+  const j = team.roster.indexOf(weakest);
+  if (j < 0) return false;
+  team.roster[j] = ctx.person.id;
+  team.subs[i] = weakest;
+  const displaced = ctx.world.persons[weakest];
+  if (displaced) displaced.benchedSince = ctx.world.week;
+  return true;
+}
 
 function benchPlayer(ctx) {
   const team = ctx.team;
