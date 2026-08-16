@@ -529,18 +529,17 @@ export function runBenchRecruitment(world, rng, { maxSignings = 8 } = {}) {
 
   for (const team of teams) {
     if (signings.length >= maxSignings) break;
+    const org = world.orgs[team.orgId];
     let best = null;
-    for (const id of world.freeAgents) {
-      const cand = world.persons[id];
+    for (const cand of benchCandidates(world, team, org, rng)) {
       if (!cand || cand.isPlayer) continue;
-      if (cand.gameId !== team.gameId) continue;
       if (cand.status === STATUS.RETIRED || cand.status === STATUS.STAFF) continue;
       const interest = evaluateInterest(world, team, cand);
       if (!interest.viable || interest.score < BENCH_INTEREST) continue;
       if (!best || interest.score > best.interest.score) best = { cand, interest };
     }
     if (!best) continue;
-    if (!npcAcceptsOffer(world, best.cand, team, best.interest, rng)) continue;
+    if (!npcAcceptsOffer(world, best.cand, team, best.interest, rng, { role: 'sub' })) continue;
 
     const offer = { ...buildOffer(world, team, best.cand, best.interest, rng), role: 'sub' };
     const res = signPlayer(world, best.cand, offer, { week: world.week });
@@ -564,6 +563,34 @@ export function runBenchRecruitment(world, rng, { maxSignings = 8 } = {}) {
     }
   }
   return signings;
+}
+
+/**
+ * Vivier pour une place de remplaçant.
+ *
+ * Le marché libre d'abord — c'est là qu'on trouve une doublure sans déranger
+ * personne. Mais une grosse structure va aussi chercher le titulaire d'une
+ * équipe plus modeste : c'est ainsi que les choses se passent réellement, et
+ * s'en tenir au vivier laissait le haut de tableau réclamer trente-quatre
+ * places pour en pourvoir deux. On ne pioche que **plus bas que soi** : un
+ * club ne pille pas le banc de son rival de même niveau, et le départ ouvre un
+ * trou chez le petit, donc une chaîne de mercato.
+ */
+function benchCandidates(world, team, org, rng) {
+  const out = [];
+  for (const id of world.freeAgents) {
+    const p = world.persons[id];
+    if (p && p.gameId === team.gameId) out.push(p);
+  }
+  const poachable = [];
+  for (const p of Object.values(world.persons)) {
+    if (p.gameId !== team.gameId || !p.teamId || p.teamId === team.id) continue;
+    const from = world.orgs[world.teams[p.teamId]?.orgId];
+    if (!from?.alive || from.tier >= org.tier) continue;
+    poachable.push(p);
+  }
+  out.push(...rng.sample(poachable, Math.min(12, poachable.length)));
+  return out;
 }
 
 /** Intérêt minimal pour offrir une place de titulaire. */
@@ -605,10 +632,30 @@ function candidatePool(world, team, rng) {
   return pool;
 }
 
-function npcAcceptsOffer(world, person, team, interest, rng) {
+function npcAcceptsOffer(world, person, team, interest, rng, { role = 'starter' } = {}) {
   const org = world.orgs[team.orgId];
   const m = mods(person);
-  if (!person.teamId) return rng.chance(0.85);
+  const game = GAMES_BY_ID[team.gameId];
+  const a = personAge(person, world.week);
+
+  // Une place de remplaçant ne s'accepte pas pour les mêmes raisons qu'une
+  // place de titulaire, et c'est ce qui décide *qui* compose les bancs du
+  // monde. Un titulaire en pleine force refuse — à juste titre : c'est
+  // pourquoi les bancs restent rares. Un jeune à fort potentiel y voit une
+  // porte vers une grande structure, un vétéran finissant y voit un emploi.
+  let benchAppetite = 1;
+  if (role !== 'starter') {
+    const rating = baseRating(person, game);
+    const ceiling = weightedCeiling(person, game);
+    const currentTier = person.orgId ? world.orgs[person.orgId]?.tier ?? 0 : 0;
+    benchAppetite = 0.25;
+    if (a < 22 && ceiling > rating + 8) benchAppetite += 0.45; // apprendre chez un grand
+    if (a >= 29) benchAppetite += 0.3; // prolonger sa carrière
+    if (org.tier - currentTier >= 2) benchAppetite += 0.25; // franchir un palier
+    benchAppetite = clamp(benchAppetite / m.ambition, 0.05, 1);
+  }
+
+  if (!person.teamId) return rng.chance(clamp(0.85 * benchAppetite + (role !== 'starter' ? 0.1 : 0), 0.05, 0.9));
 
   const currentOrg = person.orgId ? world.orgs[person.orgId] : null;
   const tierGain = org.tier - (currentOrg?.tier ?? 0);
@@ -621,7 +668,7 @@ function npcAcceptsOffer(world, person, team, interest, rng) {
   p -= clamp((person.morale - 55) / 100, -0.3, 0.3);
   // Un joueur en fin de contrat bouge beaucoup plus facilement.
   if (person.contract && person.contract.endWeek - world.week < 12) p += 0.25;
-  return rng.chance(clamp(p, 0.02, 0.9));
+  return rng.chance(clamp(p * benchAppetite, 0.02, 0.9));
 }
 
 /** Résumé lisible d'une offre, pour l'interface (§45 : info incomplète). */
