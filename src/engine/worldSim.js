@@ -364,7 +364,7 @@ export function refreshOrgs(world, rng) {
       // n'était jamais atteint et ne décidait de rien ; l'économie réparée, il
       // est devenu la seule règle. Même grandeur que pour le circuit d'entrée :
       // une scène riche porte plus de structures qu'une scène en sommeil.
-      if (count >= sceneTeamCapacity(world, game.id) + 2) continue;
+      if (count >= sceneTeamCapacity(world, game.id) + 1) continue;
       if (!rng.chance(0.5)) continue;
       const org = createOrg(rng, {
         regionId,
@@ -513,6 +513,21 @@ export function pruneWorld(world) {
         if (removed >= overflow) break;
         if ((surplus[p.gameId] ?? 0) <= 0) continue;
         surplus[p.gameId]--;
+        forgetPerson(world, p.id);
+        removed++;
+      }
+    }
+
+    // 3. En dernier recours, la réserve de mémoire cède. Le plafond de
+    //    population est une contrainte dure — il borne la sauvegarde, et donc ce
+    //    que le navigateur accepte de stocker. Une réserve qui l'emporterait sur
+    //    lui ne serait pas une réserve mais une fuite : mesuré, la population
+    //    montait à 739 pour un plafond de 700, et la sauvegarde dépassait son
+    //    quota. On rend donc les retraités protégés, du moins mémorable au plus
+    //    mémorable — l'ordre de l'oubli est préservé, la limite aussi.
+    if (removed < overflow) {
+      for (const p of retirees.slice(0, MEMORY_QUOTA).reverse()) {
+        if (removed >= overflow) break;
         forgetPerson(world, p.id);
         removed++;
       }
