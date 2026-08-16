@@ -119,6 +119,18 @@ export function sceneEconomy(world, gameId) {
 }
 
 /**
+ * Combien de structures d'entrée une scène peut-elle nourrir, par région ?
+ *
+ * Une scène populaire et vivante fait vivre plus de structures qu'une scène en
+ * sommeil. Le plancher de deux garantit qu'un circuit d'entrée existe toujours,
+ * même sur une scène moribonde — c'est l'acquis de l'étape 2 et il ne doit pas
+ * être perdu.
+ */
+export function sceneTeamCapacity(world, gameId) {
+  return Math.max(2, Math.round(2 + sceneEconomy(world, gameId) * 2.2));
+}
+
+/**
  * Revenus que cette organisation devrait réaliser cette année.
  *
  * Facteurs nommés et traçables : on doit pouvoir répondre à « pourquoi cette

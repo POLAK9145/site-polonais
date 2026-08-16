@@ -40,7 +40,7 @@ import { createOrg, createTeam } from './org.js';
 import { addToRoster, computeSynergyTarget, recordStint, rosterPersons } from './team.js';
 import { releasePlayer } from './transfers.js';
 import { WEEKS_PER_YEAR } from './time.js';
-import { operatingCost, payroll } from './economy.js';
+import { operatingCost, payroll, sceneTeamCapacity } from './economy.js';
 
 /** Tier minimal d'organisation capable de tenir une saison de ligue. */
 export const LEAGUE_CAPABLE_TIER = 2;
@@ -117,8 +117,19 @@ export function formationOutlook(world, gameId) {
     // Appétit : avec trois rosters de joueurs disponibles, la scène est
     // clairement sous-équipée en équipes d'entrée.
     const appetite = clamp(pool.length / (size * 3), 0, 1);
-    // Plafond dérivé de la population disponible, pas d'une constante.
-    const ceilingTeams = 2 + Math.floor(pool.length / size);
+    // Le vivier dit combien d'équipes on POURRAIT former. Il ne dit pas combien
+    // la scène peut en NOURRIR — et sur un jeu solo, il ne dit plus rien du
+    // tout : diviser le vivier par un effectif de 1 autorisait « 2 + nombre de
+    // joueurs libres » structures par région, soit une vingtaine.
+    //
+    // Tant que les structures d'entrée étaient insolvables par construction,
+    // elles mouraient assez vite pour que ce plafond ne serve jamais. L'étape 6
+    // a réparé leur comptabilité, et le défaut est apparu : mesuré sur trente
+    // ans, les cinq scènes solo passaient de 40 à 114 équipes pendant que les
+    // scènes à cinq et à trois joueurs restaient stables ou déclinaient
+    // (30 → 27, 30 → 24, 30 → 28). Le monde saturait alors sa population et
+    // l'élagage effaçait la totalité des retraités.
+    const ceilingTeams = Math.min(2 + Math.floor(pool.length / size), sceneTeamCapacity(world, gameId));
     const room = clamp(1 - (existing[regionId] ?? 0) / ceilingTeams, 0, 1);
     const enough = pool.length >= size;
     return {

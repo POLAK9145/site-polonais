@@ -31,7 +31,7 @@ import { weekOfYear, WEEKS_PER_YEAR } from './time.js';
 import { dissolveOrg } from './events/defs/worldEvents.js';
 import { formAmateurTeams, dissolveFailedAmateurTeams } from './amateur.js';
 import { bestSubFor, playingTimeFactor, runRotation } from './roster.js';
-import { operatingCost, payroll, updateOrgIncome, reinvest, sceneEconomy } from './economy.js';
+import { operatingCost, payroll, updateOrgIncome, reinvest } from './economy.js';
 import { runVisibilityCycle, decayOrgReputation } from './reputation.js';
 import { isTracing, trace, TRACE } from './trace.js';
 import { runContractCycle, runReleases } from './contracts.js';
@@ -347,28 +347,6 @@ export function spawnNewGeneration(world, rng, { intake = null } = {}) {
  * pendant que le circuit amateur retombait à 0-1. Une ligue ne doit grandir
  * que par promotion (étape 3), jamais par apparition spontanée.
  */
-/**
- * Combien de structures une scène peut-elle nourrir dans une région ?
- *
- * La version précédente répondait « six », en dur. Tant qu'assez de structures
- * mouraient, ce plafond n'était jamais atteint et ne décidait de rien. En
- * réparant l'économie (étape 6), les organisations ont cessé de faire faillite —
- * ce qui est le propre d'une économie équilibrée — et ce nombre est devenu la
- * seule règle : le monde a convergé vers son maximum structurel, 9 jeux × 8
- * régions plafonnés à six, soit 209 structures là où l'équilibre précédent en
- * comptait 155. Or 209 structures demandent plus de joueurs sous contrat que le
- * monde n'en conserve (`MAX_POPULATION`), et l'élagage effaçait alors la
- * totalité des retraités — la mémoire du monde disparaissait.
- *
- * Le nombre de structures doit être une **conséquence**, pas une consigne :
- * c'est le principe déjà retenu pour la formation amateur (étape 2). Une scène
- * riche et populaire fait vivre plus de structures qu'une scène en sommeil.
- */
-export function sceneCapacity(world, gameId) {
-  const health = sceneEconomy(world, gameId);
-  return Math.max(1, Math.round(2 + health * 2.2));
-}
-
 export function refreshOrgs(world, rng) {
   for (const game of GAMES) {
     const gs = world.gameStates[game.id];
@@ -381,7 +359,7 @@ export function refreshOrgs(world, rng) {
       byRegion[org.regionId] = (byRegion[org.regionId] ?? 0) + 1;
     }
     for (const [regionId, count] of Object.entries(byRegion)) {
-      if (count >= sceneCapacity(world, game.id)) continue;
+      if (count >= 6) continue;
       if (!rng.chance(0.5)) continue;
       const org = createOrg(rng, {
         regionId,
