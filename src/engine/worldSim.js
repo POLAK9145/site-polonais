@@ -31,7 +31,7 @@ import { weekOfYear, WEEKS_PER_YEAR } from './time.js';
 import { dissolveOrg } from './events/defs/worldEvents.js';
 import { formAmateurTeams, dissolveFailedAmateurTeams } from './amateur.js';
 import { bestSubFor, playingTimeFactor, runRotation } from './roster.js';
-import { operatingCost, payroll, updateOrgIncome, reinvest } from './economy.js';
+import { operatingCost, payroll, updateOrgIncome, reinvest, sceneTeamCapacity } from './economy.js';
 import { runVisibilityCycle, decayOrgReputation } from './reputation.js';
 import { isTracing, trace, TRACE } from './trace.js';
 import { runContractCycle, runReleases } from './contracts.js';
@@ -359,7 +359,12 @@ export function refreshOrgs(world, rng) {
       byRegion[org.regionId] = (byRegion[org.regionId] ?? 0) + 1;
     }
     for (const [regionId, count] of Object.entries(byRegion)) {
-      if (count >= 6) continue;
+      // Combien de structures cette scène peut-elle nourrir ? La réponse était
+      // « six », en dur. Tant qu'assez de structures mouraient, ce nombre
+      // n'était jamais atteint et ne décidait de rien ; l'économie réparée, il
+      // est devenu la seule règle. Même grandeur que pour le circuit d'entrée :
+      // une scène riche porte plus de structures qu'une scène en sommeil.
+      if (count >= sceneTeamCapacity(world, game.id) + 2) continue;
       if (!rng.chance(0.5)) continue;
       const org = createOrg(rng, {
         regionId,
