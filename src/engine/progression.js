@@ -92,6 +92,8 @@ export function progressPerson(person, ctx, rng) {
     weeks = 1,
     absWeek = 0,
     teamQuality = 0,
+    // Part du temps de jeu : 1 pour un titulaire, moins pour un remplaçant.
+    playingTime = 1,
   } = ctx;
 
   const a = personAge(person, absWeek);
@@ -105,7 +107,7 @@ export function progressPerson(person, ctx, rng) {
   const fatigueFactor = clamp(1 - Math.max(0, person.fatigue - 55) / 75, 0.45, 1);
   const stressFactor = clamp(1 - Math.max(0, person.stress - 60) / 90, 0.6, 1);
   const moraleFactor = clamp(0.75 + person.morale / 250, 0.7, 1.15);
-  const coachFactor = 1 + coachQuality * 0.45 + teamQuality * 0.12;
+  const coachFactor = (1 + coachQuality * 0.45 + teamQuality * 0.12) * clamp(playingTime, 0.5, 1);
   const learn = ageLearningFactor(a);
 
   const deltas = {};

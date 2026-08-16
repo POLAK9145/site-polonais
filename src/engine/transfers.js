@@ -20,6 +20,7 @@ import {
   STATUS,
 } from './person.js';
 import { teamNeeds, teamStrength, addToRoster, removeFromRoster, rosterPersons, detachFromAllTeams, recordStint } from './team.js';
+import { benchSlots, prefersBenchOverRelease } from './roster.js';
 import { salaryBand } from './org.js';
 import { relationValue, adjustRelation, endTeammateBond, REL_TAGS, getRelation } from './relations.js';
 import { isTransferWindow, isMajorTransferWindow } from './time.js';
@@ -90,13 +91,26 @@ export function evaluateInterest(world, team, person) {
   score += formDelta;
   if (Math.abs(formDelta) > 1) factors.push({ label: 'Forme du moment', delta: formDelta });
 
-  // 6. Urgence : une équipe incomplète recrute, une équipe satisfaite non.
-  const urgencyDelta = needs.openSlots > 0 ? 22 : needs.urgency * 16 - 6;
+  // 6. Urgence : une équipe incomplète recrute, une équipe satisfaite non — et
+  //    une équipe complète qui veut de la profondeur cherche aussi. Sans ce
+  //    troisième cas, une organisation décidée à se doter d'un banc était
+  //    traitée comme une organisation sans besoin : 78 équipes en voulaient un,
+  //    aucune n'y parvenait.
+  const depthWanted = benchSlots(world, team);
+  let urgencyDelta;
+  let urgencyLabel;
+  if (needs.openSlots > 0) {
+    urgencyDelta = 22;
+    urgencyLabel = 'Place libre dans l’effectif';
+  } else if (depthWanted > 0) {
+    urgencyDelta = 11;
+    urgencyLabel = 'Recherche de profondeur d’effectif';
+  } else {
+    urgencyDelta = needs.urgency * 16 - 6;
+    urgencyLabel = 'Besoin de renforcer un poste';
+  }
   score += urgencyDelta;
-  factors.push({
-    label: needs.openSlots > 0 ? 'Place libre dans l’effectif' : 'Besoin de renforcer un poste',
-    delta: urgencyDelta,
-  });
+  factors.push({ label: urgencyLabel, delta: urgencyDelta });
 
   // 7. Réseau : connaître quelqu'un dans la structure change tout (§59).
   let network = 0;
@@ -179,7 +193,15 @@ export function buildOffer(world, team, person, interest, rng) {
     ),
   );
   const needs = teamNeeds(world, team);
-  const isStarter = needs.openSlots > 0 || interest.rating >= needs.weakestRating;
+  // Le rôle proposé découle de la place à prendre et de la profondeur voulue.
+  // La version précédente n'étiquetait « remplaçant » qu'une recrue *moins*
+  // bonne que le plus faible titulaire — l'inverse de la raison pour laquelle
+  // une organisation signe une doublure, et un cas que le seuil d'intérêt de 48
+  // rendait de toute façon presque inatteignable.
+  const wantsDepth = benchSlots(world, team) > 0;
+  const isStarter =
+    needs.openSlots > 0 ||
+    interest.rating >= (needs.weakestRating ?? 0) + (wantsDepth ? 3 : 0);
   const years = rng.weighted([1, 2, 3], (y) => (y === 2 ? 5 : y === 1 ? 3 : 2));
 
   return {
@@ -261,11 +283,41 @@ export function signPlayer(world, person, offer, { week }) {
   if (!team || !team.active || !org || !org.alive) return { ok: false, reason: 'Structure indisponible' };
   if (person.status === STATUS.RETIRED) return { ok: false, reason: 'Joueur retraité' };
   const game = GAMES_BY_ID[team.gameId];
+  // On ne signe pas un remplaçant de plus que la profondeur voulue : sans cette
+  // borne, `addToRoster` empile les remplaçants sans limite dès qu'un effectif
+  // est plein.
+  if (offer.role !== 'starter' && team.roster.length >= game.teamSize && benchSlots(world, team) <= 0) {
+    return { ok: false, reason: 'Banc au complet' };
+  }
   if (team.roster.length >= game.teamSize && offer.role === 'starter') {
-    // Il faut libérer une place : on écarte le maillon faible.
+    // Il faut libérer une place. Deux issues possibles, et c'est ici que se
+    // jouait l'absence totale de banc dans le monde : la version précédente
+    // licenciait systématiquement le maillon faible, convertissant en
+    // licenciement le moment même où une profondeur d'effectif devrait naître.
     const needs = teamNeeds(world, team);
     if (needs.weakestId && needs.weakestId !== person.id) {
-      releasePlayer(world, needs.weakestId, week, 'remplacé');
+      const displaced = world.persons[needs.weakestId];
+      if (prefersBenchOverRelease(world, team, needs.weakestId)) {
+        const i = team.roster.indexOf(needs.weakestId);
+        if (i >= 0) team.roster.splice(i, 1);
+        team.subs.push(needs.weakestId);
+        if (displaced) displaced.benchedSince = week;
+        if (isTracing()) {
+          trace(TRACE.ROSTER, week, {
+            decision: 'benched',
+            teamId: team.id,
+            orgName: org.name,
+            benched: displaced?.nick,
+            benchedId: needs.weakestId,
+            factors: [
+              { key: 'arrival', label: `arrivée de ${person.nick}`, delta: 1 },
+              { key: 'depth', label: 'la structure a les moyens de le conserver', delta: 1 },
+            ],
+          });
+        }
+      } else {
+        releasePlayer(world, needs.weakestId, week, 'remplacé');
+      }
     } else {
       return { ok: false, reason: 'Effectif complet' };
     }
@@ -369,15 +421,30 @@ export function runNpcTransferWindow(world, rng, { maxMoves = 14, chainDepth = 3
     const org = world.orgs[team.orgId];
     const philo = PHILOSOPHIES_BY_ID[org.philosophy];
     // La patience de la structure décide de la fréquence des mouvements.
-    const moveChance = needs.openSlots > 0 ? 0.9 : clamp(needs.urgency / (philo.prefers.patience ?? 1), 0, 0.5);
+    const wantsDepth = benchSlots(world, team) > 0;
+    const moveChance = needs.openSlots > 0
+      ? 0.9
+      : Math.max(
+          wantsDepth ? 0.45 : 0,
+          clamp(needs.urgency / (philo.prefers.patience ?? 1), 0, 0.5),
+        );
     if (!rng.chance(moveChance)) continue;
 
     const pool = candidatePool(world, team, rng);
+    const game = GAMES_BY_ID[team.gameId];
+    const rosterFull = team.roster.length >= (game?.teamSize ?? 1);
     let best = null;
     for (const cand of pool) {
       if (cand.isPlayer) continue; // le joueur décide lui-même
       const interest = evaluateInterest(world, team, cand);
-      if (!interest.viable || interest.score < 48) continue;
+      if (!interest.viable) continue;
+      // Le seuil de 48 répond à la question « mérite-t-il une place de
+      // titulaire ? ». Signer une doublure est une autre question, et lui
+      // opposer la même barre revenait à l'interdire : mesuré, 86 équipes
+      // voulaient un banc, une seule trouvait un candidat au-dessus de 48.
+      const wouldBench =
+        rosterFull && wantsDepth && interest.rating < (needs.weakestRating ?? 0) + 3;
+      if (interest.score < (wouldBench ? BENCH_INTEREST : STARTER_INTEREST)) continue;
       if (!best || interest.score > best.interest.score) best = { cand, interest };
     }
     if (!best) continue;
@@ -434,6 +501,76 @@ export function runNpcTransferWindow(world, rng, { maxMoves = 14, chainDepth = 3
   }
   return moves;
 }
+
+/**
+ * Recrutement de profondeur (étape 5).
+ *
+ * Une passe distincte, et volontairement modeste. Le marché principal boucle
+ * sur les équipes avec un budget de mouvements borné : une organisation qui
+ * cherche une doublure y était en concurrence avec toutes celles qui ont un
+ * trou réel à combler, et n'obtenait jamais son tour — 86 équipes voulaient un
+ * banc, neuf places par an se remplissaient.
+ *
+ * On puise dans le vivier, pas chez les titulaires des autres : une doublure se
+ * trouve parmi les joueurs disponibles. Cela donne accessoirement une fonction
+ * au vivier, où stagnaient des joueurs corrects que personne ne regardait.
+ */
+export function runBenchRecruitment(world, rng, { maxSignings = 8 } = {}) {
+  if (!isMajorTransferWindow(world.week)) return [];
+  const signings = [];
+  const teams = rng.shuffle(
+    Object.values(world.teams).filter((t) => {
+      if (!t.active || t.isSelfTeam) return false;
+      if (!world.orgs[t.orgId]?.alive) return false;
+      const game = GAMES_BY_ID[t.gameId];
+      return t.roster.length >= (game?.teamSize ?? 1) && benchSlots(world, t) > 0;
+    }),
+  );
+
+  for (const team of teams) {
+    if (signings.length >= maxSignings) break;
+    let best = null;
+    for (const id of world.freeAgents) {
+      const cand = world.persons[id];
+      if (!cand || cand.isPlayer) continue;
+      if (cand.gameId !== team.gameId) continue;
+      if (cand.status === STATUS.RETIRED || cand.status === STATUS.STAFF) continue;
+      const interest = evaluateInterest(world, team, cand);
+      if (!interest.viable || interest.score < BENCH_INTEREST) continue;
+      if (!best || interest.score > best.interest.score) best = { cand, interest };
+    }
+    if (!best) continue;
+    if (!npcAcceptsOffer(world, best.cand, team, best.interest, rng)) continue;
+
+    const offer = { ...buildOffer(world, team, best.cand, best.interest, rng), role: 'sub' };
+    const res = signPlayer(world, best.cand, offer, { week: world.week });
+    if (!res.ok) continue;
+    const fa = world.freeAgents.indexOf(best.cand.id);
+    if (fa >= 0) world.freeAgents.splice(fa, 1);
+    best.cand.benchedSince = world.week;
+    signings.push({ personId: best.cand.id, teamId: team.id });
+
+    if (isTracing()) {
+      trace(TRACE.ROSTER, world.week, {
+        decision: 'bench_signing',
+        teamId: team.id,
+        orgName: res.org.name,
+        orgTier: res.org.tier,
+        signed: best.cand.nick,
+        signedId: best.cand.id,
+        salary: offer.salary,
+        factors: best.interest.factors,
+      });
+    }
+  }
+  return signings;
+}
+
+/** Intérêt minimal pour offrir une place de titulaire. */
+const STARTER_INTEREST = 48;
+/** Intérêt minimal pour offrir une place de remplaçant : on achète une
+ *  assurance, pas un titulaire. */
+const BENCH_INTEREST = 36;
 
 const ROSTERED_LOOKED_AT = 22;
 

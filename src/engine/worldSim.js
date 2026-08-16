@@ -25,11 +25,13 @@ import {
 } from './person.js';
 import { createOrg, createTeam } from './org.js';
 import { addToRoster, assignRoles, recordStint } from './team.js';
-import { releasePlayer, runNpcTransferWindow } from './transfers.js';
+import { releasePlayer, runNpcTransferWindow, runBenchRecruitment } from './transfers.js';
 import { decayRelations } from './relations.js';
 import { weekOfYear, WEEKS_PER_YEAR } from './time.js';
 import { dissolveOrg } from './events/defs/worldEvents.js';
 import { formAmateurTeams, dissolveFailedAmateurTeams } from './amateur.js';
+import { bestSubFor, playingTimeFactor, runRotation } from './roster.js';
+import { isTracing, trace, TRACE } from './trace.js';
 import { runContractCycle, runReleases } from './contracts.js';
 import { runFreeAgentMarket, tickIdleWeeks } from './npcMarket.js';
 
@@ -63,6 +65,9 @@ export function simulateNpcs(world, rng) {
         weeks: NPC_BATCH,
         absWeek: world.week,
         teamQuality: team ? clamp(teamStrength(world, team, { forMatch: false }).individual / 100, 0, 1) : 0,
+        // Un remplaçant s'entraîne autant mais ne joue pas : il progresse plus
+        // lentement, sans être condamné à stagner (§J).
+        playingTime: playingTimeFactor(world, p),
       },
       rng,
     );
@@ -697,10 +702,18 @@ export function runMarket(world, rng) {
  */
 export function runCareerCycle(world, rng) {
   tickIdleWeeks(world);
+  const rotations = runRotation(world, rng);
+  const benchSignings = runBenchRecruitment(world, rng);
   const contracts = runContractCycle(world, rng);
   const released = runReleases(world, rng);
   const market = runFreeAgentMarket(world, rng);
-  return { contracts, released: released.length, ...market };
+  return {
+    contracts,
+    released: released.length,
+    rotations: rotations.length,
+    benchSignings: benchSignings.length,
+    ...market,
+  };
 }
 
 /**
@@ -723,12 +736,28 @@ export function fillEmptyRosters(world, rng) {
     let missing = game.teamSize - team.roster.length;
     if (missing <= 0) continue;
 
-    // 1. On promeut d'abord ses propres remplaçants.
+    // 1. On promeut d'abord ses propres remplaçants — le meilleur, et non le
+    //    premier arrivé : la promotion interne est une décision sportive.
     while (missing > 0 && team.subs.length > 0) {
-      const promoted = team.subs.shift();
-      if (world.persons[promoted]) {
+      const promoted = bestSubFor(world, team) ?? team.subs[0];
+      const i = team.subs.indexOf(promoted);
+      if (i >= 0) team.subs.splice(i, 1);
+      const person = world.persons[promoted];
+      if (person) {
         team.roster.push(promoted);
+        person.benchedSince = null;
+        person.startsSince = world.week;
         missing--;
+        if (isTracing()) {
+          trace(TRACE.ROSTER, world.week, {
+            decision: 'promotion',
+            teamId: team.id,
+            orgName: org.name,
+            promoted: person.nick,
+            promotedId: person.id,
+            factors: [{ key: 'vacancy', label: 'place de titulaire libérée', delta: 1 }],
+          });
+        }
       }
     }
 
