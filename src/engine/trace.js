@@ -28,6 +28,8 @@ export const TRACE = {
   ORG: 'org',
   HIERARCHY: 'hierarchy',
   CONTRACT: 'contract',
+  ECONOMY: 'economy',
+  ROSTER: 'roster',
   NPC_CAREER: 'npc_career',
   META: 'meta',
   DEFERRED: 'deferred',

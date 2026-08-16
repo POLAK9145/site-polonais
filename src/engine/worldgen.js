@@ -19,6 +19,7 @@ import { addToRoster, assignRoles, computeSynergyTarget, recordStint } from './t
 import { createGameState } from './meta.js';
 import { resetCompCounter } from './competition.js';
 import { absWeek } from './time.js';
+import { gainFollowers } from './reputation.js';
 
 /** Répartition des tiers d'organisation selon la taille de la scène. */
 const SCENE_PROFILES = {
@@ -204,7 +205,11 @@ function spawnPlayer(world, rng, { game, regionId, tier, now, ageRange }) {
   p.reputation.public = clamp(rng.gauss(tier * 8.5, 9), 0, 100);
   p.reputation.community = clamp(rng.gauss(tier * 7 + 8, 10), 0, 100);
   p.reputation.media = clamp(rng.gauss(tier * 7, 9), 0, 100);
-  p.followers = Math.round(Math.pow(Math.max(1, p.reputation.public), 2.4) * rng.float(1.5, 5));
+  // L'audience de départ passe par la même porte que toutes les autres : elle
+  // est bornée par ce que la notoriété du personnage justifie. La formule
+  // précédente — `public^2,4 × 1,5..5` sans plafond — dotait la cohorte initiale
+  // d'une audience que le reste du moteur ne pouvait ni maintenir ni reproduire.
+  gainFollowers(world, p, Math.pow(Math.max(1, p.reputation.public), 2.4) * rng.float(1.5, 5), 'notoriété initiale');
   p.stats.matches = Math.round(rng.float(0, 60) * tier);
   p.stats.wins = Math.round(p.stats.matches * rng.float(0.35, 0.65));
   p.stats.losses = p.stats.matches - p.stats.wins;

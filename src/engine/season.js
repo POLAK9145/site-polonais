@@ -20,6 +20,7 @@ import { GAMES_BY_ID } from '../data/games.js';
 import { REGIONS_BY_ID } from '../data/regions.js';
 import { assignDivisions, canSustainLeague } from './amateur.js';
 import { applyHierarchyChanges } from './hierarchy.js';
+import { titleScope, SCOPE, titleAudienceBurst } from './reputation.js';
 
 const LEAGUE_SIZE = 8;
 
@@ -361,6 +362,38 @@ function awardPlacementPoints(world, comp) {
  */
 const MAJOR_TITLE_LEVEL = 3;
 
+/**
+ * Applique à un vainqueur la réputation que la **portée** de sa victoire
+ * justifie (étape 6, §C).
+ *
+ * Trois portées, trois publics : la communauté locale, le milieu
+ * professionnel, le grand public et les médias. Un titre ne monte pas
+ * uniformément tous les compteurs.
+ */
+function applyTitleScope(p, tierLevel) {
+  const scope = titleScope(tierLevel);
+  const bump = (kind, delta) => {
+    p.reputation[kind] = clamp(p.reputation[kind] + delta, 0, 100);
+  };
+  if (scope === SCOPE.LOCAL) {
+    // Connu de ceux qui étaient là. Aucun effet professionnel.
+    bump('community', 1.4);
+    bump('public', 0.6);
+    return;
+  }
+  if (scope === SCOPE.NATIONAL) {
+    bump('pros', tierLevel * 1.8);
+    bump('public', tierLevel * 1.5);
+    bump('community', tierLevel * 0.8);
+    return;
+  }
+  bump('pros', tierLevel * 2.1);
+  bump('public', tierLevel * 2.6);
+  bump('community', tierLevel * 1.2);
+  // Seul le niveau mondial fabrique une notoriété médiatique.
+  bump('media', tierLevel * 2.2);
+}
+
 function recordTitles(world, comp) {
   if (!comp.championId) return;
   const team = world.teams[comp.championId];
@@ -383,19 +416,19 @@ function recordTitles(world, comp) {
     if (major) p.stats.titles++;
     else p.stats.minorTitles = (p.stats.minorTitles ?? 0) + 1;
     if (comp.tierLevel >= 5) p.stats.internationalTitles++;
-    // La réputation ne décroît nulle part dans le moteur : tout gain répété
-    // finit donc par saturer l'échelle. Tant qu'aucun tournoi d'entrée n'était
-    // joué, la question ne se posait pas ; avec une quinzaine d'opens par an,
-    // 1,8 point par victoire suffisait à porter n'importe quel joueur de
-    // circuit amateur à 100 de réputation professionnelle. Or gagner un open
-    // ne vous fait pas remarquer des professionnels — cela vous fait connaître
-    // localement.
-    if (major) p.reputation.pros = clamp(p.reputation.pros + comp.tierLevel * 1.8, 0, 100);
-    p.reputation.public = clamp(
-      p.reputation.public + (major ? comp.tierLevel * 2.2 : 0.6),
-      0,
-      100,
-    );
+    // Portée de la victoire (étape 6, §C). Gagner un open ne vous fait pas
+    // remarquer des professionnels — cela vous fait connaître localement, dans
+    // votre communauté. Une ligue nationale se sait dans le milieu. Un mondial
+    // se sait partout, et c'est le seul niveau qui alimente la réputation
+    // médiatique.
+    //
+    // Sans cette distinction, 1,8 point par victoire et une quinzaine d'opens
+    // par an suffisaient à porter n'importe quel joueur de circuit amateur à 100
+    // de réputation professionnelle.
+    applyTitleScope(p, comp.tierLevel);
+    // Gagner expose : c'est la dimension qui manquait à l'audience, laquelle ne
+    // dépendait que du niveau auquel on joue.
+    titleAudienceBurst(world, p, comp.tierLevel);
     p.morale = clamp(p.morale + 12, 0, 100);
   }
   const runner = comp.runnerUpId ? world.teams[comp.runnerUpId] : null;

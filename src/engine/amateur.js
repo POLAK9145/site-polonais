@@ -40,6 +40,7 @@ import { createOrg, createTeam } from './org.js';
 import { addToRoster, computeSynergyTarget, recordStint, rosterPersons } from './team.js';
 import { releasePlayer } from './transfers.js';
 import { WEEKS_PER_YEAR } from './time.js';
+import { operatingCost, payroll } from './economy.js';
 
 /** Tier minimal d'organisation capable de tenir une saison de ligue. */
 export const LEAGUE_CAPABLE_TIER = 2;
@@ -244,7 +245,26 @@ export function dissolveFailedAmateurTeams(world, rng) {
     if (players.length < (game?.teamSize ?? 1)) risk += 0.25;
     if (season.played > 0 && season.wins === 0) risk += 0.2;
     if (season.played === 0) risk += 0.15;
-    if (org.budget <= 0) risk += 0.12;
+    // Fragilité financière, exprimée dans l'échelle de la structure : une
+    // réserve qui ne couvre pas un trimestre de fonctionnement ne permet pas de
+    // traverser une mauvaise saison.
+    //
+    // Le test précédent — `budget <= 0` — mesurait un symptôme : les structures
+    // d'entrée étaient insolvables par construction (charges de 14 400 pour un
+    // niveau qui ne peut gagner que 8 100), et **toutes** portaient donc ce
+    // risque. En réparant leur comptabilité (étape 6), ce terme s'est éteint
+    // pour tout le monde, la mortalité du bas de pyramide avec lui : le nombre
+    // de structures montait de 155 à 218, saturait la population du monde, et
+    // l'élagage effaçait la totalité des retraités (85 → 0).
+    // Calibrage : le terme précédent se déclenchait pour la quasi-totalité des
+    // structures d'entrée, puisqu'elles étaient toutes dans le rouge. Une
+    // réserve inférieure à deux ans de charges retrouve cette fréquence, avec
+    // cette fois une raison : une structure communautaire vit d'une saison sur
+    // l'autre, et une mauvaise année suffit à l'arrêter.
+    const charges = operatingCost(world, org) + payroll(world, org);
+    const runway = org.budget / Math.max(1, charges);
+    if (runway < 0.5) risk += 0.22;
+    else if (runway < 2) risk += 0.12;
 
     // Un espoir crédible dans l'effectif retient le projet.
     const hasProspect = players.some(

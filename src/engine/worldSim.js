@@ -31,6 +31,8 @@ import { weekOfYear, WEEKS_PER_YEAR } from './time.js';
 import { dissolveOrg } from './events/defs/worldEvents.js';
 import { formAmateurTeams, dissolveFailedAmateurTeams } from './amateur.js';
 import { bestSubFor, playingTimeFactor, runRotation } from './roster.js';
+import { operatingCost, payroll, updateOrgIncome, reinvest, sceneEconomy } from './economy.js';
+import { runVisibilityCycle, decayOrgReputation } from './reputation.js';
 import { isTracing, trace, TRACE } from './trace.js';
 import { runContractCycle, runReleases } from './contracts.js';
 import { runFreeAgentMarket, tickIdleWeeks } from './npcMarket.js';
@@ -170,16 +172,11 @@ export function simulateOrgEconomy(world, rng) {
   for (const org of Object.values(world.orgs)) {
     if (!org.alive) continue;
     const monthlyIncome = org.yearlyIncome / 12;
-    let monthlyCost = 0;
-    for (const teamId of Object.values(org.teams)) {
-      const team = world.teams[teamId];
-      if (!team?.active) continue;
-      for (const pid of [...team.roster, ...team.subs]) {
-        const p = world.persons[pid];
-        if (p?.contract?.salary) monthlyCost += p.contract.salary / 12;
-      }
-      monthlyCost += 1200 * org.tier; // staff, structure, déplacements
-    }
+    // Charges : salaires plus un fonctionnement proportionnel à l'échelle
+    // réelle de la structure. Le forfait de `1200 × tier` par mois ne
+    // représentait plus rien dès que l'économie grossissait — 5,8 M pour tout
+    // le monde à l'année 5 comme à l'année 30, pour 62 milliards de revenus.
+    const monthlyCost = (payroll(world, org) + operatingCost(world, org)) / 12;
     org.budget += Math.round(monthlyIncome - monthlyCost);
 
     // Une org dans le rouge depuis longtemps finit par fermer.
@@ -198,12 +195,20 @@ export function simulateOrgEconomy(world, rng) {
       org.distress = Math.max(0, (org.distress ?? 0) - 1);
     }
 
-    // Les sponsors suivent les résultats.
+    // Revenus de l'année : une fonction de l'état, jamais un cumul de son
+    // propre passé. La version précédente multipliait `yearlyIncome` par
+    // lui-même chaque année, ce qui produisait une exponentielle que rien ne
+    // freinait (voir `economy.js`).
     if (world.week % 52 === 0) {
-      const perf = org.titles;
-      org.yearlyIncome = Math.round(
-        org.yearlyIncome * clamp(0.92 + perf * 0.03 + org.reputation / 800, 0.7, 1.3),
-      );
+      // La réputation d'organisation s'oublie elle aussi. Elle ne décroissait
+      // nulle part, saturait à 100, et verrouillait donc le multiplicateur de
+      // revenus au-dessus de 1 pour toujours — c'était la moitié de la cause de
+      // la divergence économique.
+      decayOrgReputation(world, org);
+      updateOrgIncome(world, org, rng);
+      // L'excédent est dépensé, pas thésaurisé : c'est la sortie qui manquait,
+      // et c'est elle qui rend une organisation mortelle.
+      reinvest(world, org);
     }
   }
 }
@@ -342,6 +347,28 @@ export function spawnNewGeneration(world, rng, { intake = null } = {}) {
  * pendant que le circuit amateur retombait à 0-1. Une ligue ne doit grandir
  * que par promotion (étape 3), jamais par apparition spontanée.
  */
+/**
+ * Combien de structures une scène peut-elle nourrir dans une région ?
+ *
+ * La version précédente répondait « six », en dur. Tant qu'assez de structures
+ * mouraient, ce plafond n'était jamais atteint et ne décidait de rien. En
+ * réparant l'économie (étape 6), les organisations ont cessé de faire faillite —
+ * ce qui est le propre d'une économie équilibrée — et ce nombre est devenu la
+ * seule règle : le monde a convergé vers son maximum structurel, 9 jeux × 8
+ * régions plafonnés à six, soit 209 structures là où l'équilibre précédent en
+ * comptait 155. Or 209 structures demandent plus de joueurs sous contrat que le
+ * monde n'en conserve (`MAX_POPULATION`), et l'élagage effaçait alors la
+ * totalité des retraités — la mémoire du monde disparaissait.
+ *
+ * Le nombre de structures doit être une **conséquence**, pas une consigne :
+ * c'est le principe déjà retenu pour la formation amateur (étape 2). Une scène
+ * riche et populaire fait vivre plus de structures qu'une scène en sommeil.
+ */
+export function sceneCapacity(world, gameId) {
+  const health = sceneEconomy(world, gameId);
+  return Math.max(1, Math.round(2 + health * 2.2));
+}
+
 export function refreshOrgs(world, rng) {
   for (const game of GAMES) {
     const gs = world.gameStates[game.id];
@@ -354,7 +381,7 @@ export function refreshOrgs(world, rng) {
       byRegion[org.regionId] = (byRegion[org.regionId] ?? 0) + 1;
     }
     for (const [regionId, count] of Object.entries(byRegion)) {
-      if (count >= 6) continue;
+      if (count >= sceneCapacity(world, game.id)) continue;
       if (!rng.chance(0.5)) continue;
       const org = createOrg(rng, {
         regionId,
@@ -671,6 +698,10 @@ function relKeyLocal(a, b) {
 
 /** Cycle annuel : retraites, nouvelle génération, structures. */
 export function runYearlyCycle(world, rng) {
+  // Visibilité avant retraites : la réputation et l'audience de l'année qui
+  // s'achève glissent vers ce qui les justifie, pour tout le monde et par un
+  // seul chemin de code — joueur compris (étape 6, §K).
+  const visibility = runVisibilityCycle(world);
   const retired = runRetirements(world, rng);
   const spawned = spawnNewGeneration(world, rng);
   refreshOrgs(world, rng);
@@ -678,7 +709,7 @@ export function runYearlyCycle(world, rng) {
   // contrepartie de leur formation libre.
   const folded = dissolveFailedAmateurTeams(world, rng);
   const pruned = pruneWorld(world);
-  return { retired: retired.length, spawned: spawned.length, pruned, folded: folded.length };
+  return { retired: retired.length, spawned: spawned.length, pruned, folded: folded.length, visibility };
 }
 
 /** Formation spontanée d'équipes amateurs, à partir des joueurs disponibles. */

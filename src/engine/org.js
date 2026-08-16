@@ -106,10 +106,25 @@ export function emptySeasonRecord() {
 
 /** Salaire annuel de référence pour un poste dans cette organisation. */
 export function salaryBand(org, game) {
+  // Les salaires se paient sur les **revenus**, pas sur la trésorerie.
+  //
+  // La version précédente lisait `org.budget` — un accumulateur. Mesuré à
+  // l'année 10 : une structure de tier 2 descendue avec 1,64 M en caisse pour
+  // 455 k de revenus payait 882 k de salaires, soit près du double de ce
+  // qu'elle gagnait, et le faisait pendant toute la durée des contrats. Les
+  // niveaux intermédiaires étaient structurellement déficitaires.
+  //
+  // La trésorerie garde un rôle : elle ouvre une marge de manœuvre — une
+  // organisation riche peut surpayer un temps — mais plafonnée, et
+  // proportionnelle à son excédent réel. C'est un avantage, pas une capacité
+  // permanente.
+  const flow = Math.max(org.yearlyIncome / 0.9, 0);
+  const surplus = Math.max(0, org.budget - org.yearlyIncome);
+  const capacity = flow + Math.min(flow * 0.5, surplus * 0.2);
   // Plancher volontaire : une structure sans budget recrute quand même —
   // gratuitement. Sans ce plancher, `salaryBand` renvoyait 0 et rendait tout
   // recrutement amateur mathématiquement impossible.
-  const base = Math.max(org.budget * 0.16, 2600) * (game?.prizeScale ?? 1);
+  const base = Math.max(capacity * 0.16, 2600) * (game?.prizeScale ?? 1);
   return {
     min: Math.round(base * 0.35),
     typical: Math.round(base * 0.6),

@@ -59,6 +59,7 @@ import { matchHighlights } from './match.js';
 import { weekOfYear, yearOf, isTransferWindow, WEEKS_PER_YEAR } from './time.js';
 import { validateWorld, validateCareer } from './validator.js';
 import { checkAchievements, trackLowPoint } from './achievements.js';
+import { gainFollowers } from './reputation.js';
 
 /** Crée une session complète : monde généré + carrière du joueur. */
 export function createSession(config) {
@@ -392,16 +393,14 @@ function runPlayerWeek(session, person, report) {
   if (audienceSlots > 0) {
     // L'audience sature contre ce que la notoriété réelle justifie : on ne
     // devient pas la personne la plus suivie du monde en streamant beaucoup,
-    // il faut aussi qu'il y ait une raison de vous suivre.
-    const ceiling = audienceCeiling(person);
-    const room = clamp(1 - person.followers / ceiling, 0, 1);
-    const growth = Math.round(
+    // il faut aussi qu'il y ait une raison de vous suivre. Le plafond et le
+    // rendement décroissant sont appliqués par `gainFollowers`, qui est le seul
+    // chemin d'écriture de l'audience dans tout le moteur.
+    const raw =
       (55 + Math.sqrt(person.followers) * 2.4) *
-        audienceSlots *
-        (0.4 + person.attrs.entertainment / 100) *
-        Math.pow(room, 0.7),
-    );
-    person.followers += Math.max(0, growth);
+      audienceSlots *
+      (0.4 + person.attrs.entertainment / 100);
+    gainFollowers(world, person, raw, 'activité hebdomadaire');
     person.reputation.public = clamp(person.reputation.public + audienceSlots * 0.05, 0, 100);
   } else if (person.followers > 1000) {
     // Une audience qu'on n'entretient pas s'érode.
@@ -431,22 +430,10 @@ function runPlayerWeek(session, person, report) {
   if (person.status === STATUS.PRO) reached.pro = true;
 }
 
-/**
- * Plafond d'audience atteignable, déterminé par la notoriété publique, la
- * communauté et le palmarès. Un champion du monde charismatique peut viser
- * plusieurs millions ; un joueur inconnu qui streame beaucoup plafonnera
- * autour de quelques dizaines de milliers.
- */
-export function audienceCeiling(person) {
-  const rep = person.reputation;
-  return (
-    8000 +
-    Math.pow(Math.max(1, rep.public), 2.15) * 60 +
-    rep.community * 900 +
-    person.stats.titles * 25000 +
-    person.stats.internationalTitles * 120000
-  );
-}
+// `audienceCeiling` vit désormais dans `reputation.js`, avec la fonction qui
+// l'applique : il n'y a qu'une source de vérité pour l'audience (§K). Le
+// ré-export garde les appelants existants — la vue notamment — inchangés.
+export { audienceCeiling } from './reputation.js';
 
 function coachQualityOf(world, team) {
   if (!team?.coachId) return 0;

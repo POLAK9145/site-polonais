@@ -9,6 +9,7 @@
  *   node tools/audit.js --careers=200 --json=rapport.json
  *   node tools/audit.js --mode=world --years=30
  *   node tools/audit.js --mode=trace --seed=7 --years=12
+ *   node tools/audit.js --mode=economy --years=30
  *
  * Les carrières sont réparties sur plusieurs processus : une carrière de
  * 20 ans coûte plusieurs secondes, et l'audit doit rester réalisable.
@@ -23,6 +24,7 @@ import { runOneCareer, runWorldOnly, runNpcTrajectories } from '../src/engine/au
 import { runAmateurAudit } from '../src/engine/audit/amateurAudit.js';
 import { runHierarchyAudit } from '../src/engine/audit/hierarchyAudit.js';
 import { runRosterAudit } from '../src/engine/audit/rosterAudit.js';
+import { runEconomyAudit } from '../src/engine/audit/economyAudit.js';
 import { GAMES_BY_ID } from '../src/data/games.js';
 import { POLICY_IDS } from '../src/engine/audit/policies.js';
 import { buildReport } from '../src/engine/audit/report.js';
@@ -157,6 +159,7 @@ async function main() {
   if (opts.mode === 'amateur') return runAmateurMode(opts);
   if (opts.mode === 'hierarchy') return runHierarchyMode(opts);
   if (opts.mode === 'roster') return runRosterMode(opts);
+  if (opts.mode === 'economy') return runEconomyMode(opts);
 
   console.error(
     `Audit : ${opts.careers} carrières × ${opts.years} ans, seed ${opts.seed}, ${opts.workers} processus…`,
@@ -275,6 +278,101 @@ function runRosterMode(opts) {
   lines.push(`Invariants d'effectif violés : ${r.invariants.length}`);
   for (const i of r.invariants.slice(0, 6)) lines.push(`  ${i.code} — ${i.detail}`);
   lines.push(`Incohérences du validateur : ${r.issues.length}`);
+  console.log(lines.join('\n'));
+}
+
+/** Mode économie (étape 6) : richesse, inflation, réputation, audience, concentration. */
+function runEconomyMode(opts) {
+  console.error(`Économie : ${opts.years} ans, seed ${opts.seed}…`);
+  const r = runEconomyAudit({ seed: opts.seed, years: opts.years, sampleEveryYears: 5 });
+  const M = (v) => (Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(1) + ' M' : Math.round(v / 1000) + ' k');
+  const lines = [];
+  lines.push(`=== ÉCONOMIE, RÉPUTATION ET AUDIENCE — seed ${opts.seed}, ${opts.years} ans ===`);
+  if (r.crash) lines.push(`PLANTAGE : ${r.crash.message} (${r.crash.stack})`);
+
+  lines.push('');
+  lines.push('--- Compte de résultat agrégé (§Y : des flux, pas des accumulateurs) ---');
+  lines.push(['année', 'orgs', 'revenus', 'salaires', 'charges', 'résultat', 'budget tot.'].map((h) => h.padStart(13)).join(''));
+  for (const s of r.samples) {
+    lines.push(
+      [s.year, s.orgs, M(s.flow?.income ?? 0), M(s.flow?.payroll ?? 0), M(s.flow?.ops ?? 0), M(s.flow?.result ?? 0), M(s.wealth.total)]
+        .map((v) => String(v).padStart(13))
+        .join(''),
+    );
+  }
+
+  lines.push('');
+  lines.push('--- Richesse et inflation ---');
+  lines.push(['année', 'médiane', 'p90', 'max', 'négatifs'].map((h) => h.padStart(13)).join(''));
+  for (const s of r.samples) {
+    lines.push(
+      [s.year, M(s.wealth.median), M(s.wealth.p90), M(s.wealth.max), s.wealth.negatives]
+        .map((v) => String(v).padStart(13))
+        .join(''),
+    );
+  }
+
+  const last = r.samples.at(-1);
+  lines.push('');
+  lines.push('--- Richesse par niveau (fin de simulation) ---');
+  for (const [tier, t] of Object.entries(last.wealth.perTier)) {
+    lines.push(`  tier ${tier} | n=${String(t.n).padStart(3)} | médiane ${M(t.median).padStart(8)} | p90 ${M(t.p90).padStart(8)} | négatifs ${t.negatives}`);
+  }
+  lines.push('');
+  lines.push('--- Revenus par scène (chaque scène a son économie) ---');
+  for (const [gameId, s] of Object.entries(last.wealth.perScene)) {
+    lines.push(`  ${gameId.padEnd(16)} | n=${String(s.n).padStart(3)} | médiane ${M(s.median).padStart(8)} | santé ×${s.health}`);
+  }
+
+  lines.push('');
+  lines.push('--- Réputation ---');
+  lines.push(['année', 'médiane', 'p90', 'max', 'saturés', 'n'].map((h) => h.padStart(11)).join(''));
+  for (const s of r.samples) {
+    lines.push(
+      [s.year, s.reputation.median, s.reputation.p90, s.reputation.max, s.reputation.saturated, s.reputation.n]
+        .map((v) => String(v).padStart(11))
+        .join(''),
+    );
+  }
+  lines.push('');
+  lines.push('--- Oubli mesuré sur les joueurs sans équipe (§E) ---');
+  for (const [key, g] of Object.entries(r.forgotten)) {
+    lines.push(`  ${key.padEnd(10)} | n=${String(g.n).padStart(4)} | réputation médiane ${String(g.prosMedian).padStart(6)} | plancher médian ${String(g.floorMedian).padStart(6)} | audience médiane ${g.followersMedian}`);
+  }
+
+  lines.push('');
+  lines.push('--- Audience ---');
+  lines.push(['année', 'médiane', 'p90', 'max', 'à zéro', 'total'].map((h) => h.padStart(12)).join(''));
+  for (const s of r.samples) {
+    lines.push(
+      [s.year, s.audience.median, s.audience.p90, s.audience.max, s.audience.zeros, M(s.audience.total)]
+        .map((v) => String(v).padStart(12))
+        .join(''),
+    );
+  }
+  lines.push('');
+  lines.push('--- Audience par niveau d’organisation ---');
+  for (const [tier, t] of Object.entries(last.audience.perTier)) {
+    lines.push(`  tier ${tier} | n=${String(t.n).padStart(4)} | médiane ${String(t.median).padStart(9)} | p90 ${t.p90}`);
+  }
+  lines.push('');
+  lines.push('--- Rareté des vedettes (pic d’audience atteint) ---');
+  const peaks = r.peaks;
+  for (const seuil of [2e6, 1e6, 5e5, 3e5, 1e5]) {
+    const c = peaks.filter((p) => p > seuil).length;
+    lines.push(`  au-dessus de ${M(seuil).padStart(7)} : ${String(c).padStart(4)} personnes (${((100 * c) / Math.max(1, peaks.length)).toFixed(2)} % de ${peaks.length})`);
+  }
+
+  lines.push('');
+  lines.push('--- Concentration (part des trois premiers) ---');
+  lines.push(['année', 'revenus', 'richesse', 'audience'].map((h) => h.padStart(12)).join(''));
+  for (const s of r.samples) {
+    lines.push([s.year, s.concentration.revenue, s.concentration.wealth, s.concentration.audience].map((v) => String(v).padStart(12)).join(''));
+  }
+
+  lines.push('');
+  lines.push(`Invariants économiques violés : ${r.invariants.length}`);
+  for (const i of r.invariantDetails ?? []) lines.push(`  ${i.code} — ${i.detail}`);
   console.log(lines.join('\n'));
 }
 

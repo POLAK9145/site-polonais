@@ -11,6 +11,7 @@ import { attrsOfGroup } from '../attributes.js';
 import { adjustRelation } from '../relations.js';
 import { logTimeline, addMemory, addAchievement, setFlag } from '../career.js';
 import { scheduleEffect, queueChain } from './engine.js';
+import { gainFollowers } from '../reputation.js';
 
 export function createEffects(ctx) {
   const { world, career, person } = ctx;
@@ -64,8 +65,18 @@ export function createEffects(ctx) {
       return fx;
     },
 
+    /**
+     * Audience gagnée ou perdue par un événement.
+     *
+     * Les gains passent par `gainFollowers` : c'était le trou du modèle
+     * précédent, où cette fonction écrivait directement dans le champ et
+     * ignorait donc le plafond. Un événement pouvait à lui seul porter un
+     * inconnu à un million de suiveurs. Les pertes, elles, s'appliquent
+     * directement — rien ne protège d'un scandale.
+     */
     followers(delta) {
-      person.followers = Math.max(0, Math.round(person.followers + delta));
+      if (delta > 0) gainFollowers(world, person, delta, 'événement');
+      else person.followers = Math.max(0, Math.round(person.followers + delta));
       return fx;
     },
 
