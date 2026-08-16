@@ -642,12 +642,17 @@ export const MAX_POPULATION = 700;
  * Nombre de retraités que le monde garde en mémoire, même sous pression.
  *
  * Ce n'est pas un plafond de population supplémentaire : le plafond reste
- * `MAX_POPULATION`, et donc la sauvegarde reste bornée. C'est un **ordre
- * d'oubli** : la mémoire n'est plus la première chose sacrifiée. Sa valeur est
- * celle de l'équilibre observé avant que le nombre de structures n'augmente
- * (85 retraités conservés).
+ * `MAX_POPULATION`. C'est un **ordre d'oubli** : la mémoire n'est plus la
+ * première chose sacrifiée.
+ *
+ * Sa valeur est bornée par la taille de sauvegarde, qui est la seule contrainte
+ * réellement externe — le quota du navigateur. Une réserve de 85, égale à
+ * l'équilibre observé auparavant, portait la sauvegarde à 2 517 Ko pour une
+ * limite de 2 600 : la marge restante y passait entièrement. On garde donc
+ * moins de monde, mais on garde les bons — le tri par palmarès puis par
+ * récence fait que ce sont les mémorables qui restent.
  */
-export const MEMORY_QUOTA = 85;
+export const MEMORY_QUOTA = 50;
 
 /**
  * Agents libres excédentaires par jeu : ceux dont la scène n'a pas besoin.

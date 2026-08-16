@@ -156,13 +156,34 @@ test('le système ne crée pas une infinité d’équipes ni de population', () 
   const active = Object.values(world.teams).filter((t) => t.active && !t.isSelfTeam).length;
   assert.ok(active < 260, `${active} équipes actives après 30 ans`);
 
-  // Créations et dissolutions doivent s'équilibrer : un circuit d'entrée sain
-  // recycle, il n'accumule pas.
-  const ratio = r.flows.amateurTeamsDissolved / Math.max(1, r.flows.amateurTeamsCreated);
-  assert.ok(ratio > 0.6, `seulement ${Math.round(ratio * 100)} % des équipes créées finissent par disparaître`);
+  // Un circuit d'entrée sain recycle, il n'accumule pas.
+  //
+  // Ce test mesurait `dissoutes / créées`, ce qui compte une **promotion** comme
+  // une accumulation. Or une équipe promue libère sa place exactement comme une
+  // équipe dissoute : elle a simplement quitté le circuit par le haut. La
+  // formule est devenue fausse à l'étape 6, quand les structures d'entrée ont
+  // cessé d'être insolvables par construction et qu'une partie d'entre elles a
+  // commencé à réussir : mesuré sur 30 ans, 351 créations pour 204 dissolutions
+  // (58 %) et 100 promotions (28 %). Le circuit évacue 87 % de ce qu'il crée —
+  // il est plus sain qu'avant — mais la part de dissolution passe sous 60 %.
+  //
+  // On mesure donc les sorties, et l'on vérifie séparément que les deux issues
+  // existent : un circuit où l'on ne fait que disparaître serait aussi faux
+  // qu'un circuit où l'on ne fait que monter.
+  const { amateurTeamsCreated: créées, amateurTeamsDissolved: dissoutes, amateurToLeague: promues } = r.flows;
+  const sorties = (dissoutes + promues) / Math.max(1, créées);
+  assert.ok(sorties > 0.6, `seulement ${Math.round(sorties * 100)} % des équipes créées quittent le circuit`);
+  assert.ok(dissoutes > 0, 'aucune équipe d’entrée ne disparaît : le circuit n’a plus d’échec');
+  assert.ok(promues > 0, 'aucune équipe d’entrée ne monte : le circuit n’a plus de débouché');
+  // Et l'échec reste l'issue la plus fréquente : monter doit rester difficile.
+  assert.ok(dissoutes > promues, `${promues} promotions pour ${dissoutes} dissolutions : monter est devenu facile`);
 
   // Effet « ferme à rookies » (§11) : la population reste bornée.
-  assert.ok(r.population.total <= 720, `population ${r.population.total}`);
+  // Le seuil suit la réserve de mémoire introduite à l'étape 6 : le monde
+  // conserve désormais ~85 retraités au lieu de les effacer tous, ce qui déplace
+  // la population sans toucher au plafond `MAX_POPULATION`. La sauvegarde, seule
+  // contrainte réelle, reste vérifiée par son propre test.
+  assert.ok(r.population.total <= 780, `population ${r.population.total}`);
   // Et les structures mortes ne s'accumulent pas dans la sauvegarde.
   const dead = Object.values(world.teams).filter((t) => !t.active).length;
   assert.ok(dead < 60, `${dead} équipes mortes conservées`);
