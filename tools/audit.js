@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url';
 import { runOneCareer, runWorldOnly, runNpcTrajectories } from '../src/engine/audit/runner.js';
 import { runAmateurAudit } from '../src/engine/audit/amateurAudit.js';
 import { runHierarchyAudit } from '../src/engine/audit/hierarchyAudit.js';
+import { runRosterAudit } from '../src/engine/audit/rosterAudit.js';
 import { GAMES_BY_ID } from '../src/data/games.js';
 import { POLICY_IDS } from '../src/engine/audit/policies.js';
 import { buildReport } from '../src/engine/audit/report.js';
@@ -155,6 +156,7 @@ async function main() {
   if (opts.mode === 'world') return runWorldMode(opts);
   if (opts.mode === 'amateur') return runAmateurMode(opts);
   if (opts.mode === 'hierarchy') return runHierarchyMode(opts);
+  if (opts.mode === 'roster') return runRosterMode(opts);
 
   console.error(
     `Audit : ${opts.careers} carrières × ${opts.years} ans, seed ${opts.seed}, ${opts.workers} processus…`,
@@ -223,6 +225,56 @@ function runWorldMode(opts) {
   const empty = result.championsByYear.filter((c) => c.majorChampions === 0).length;
   lines.push(`Années sans champion majeur : ${empty}/${result.championsByYear.length}`);
   lines.push(`Incohérences finales : ${result.finalIssues.length}`);
+  console.log(lines.join('\n'));
+}
+
+/** Mode profondeur d'effectif (étape 5) : bancs, promotions, trajectoires. */
+function runRosterMode(opts) {
+  console.error(`Profondeur d'effectif : ${opts.years} ans, seed ${opts.seed}…`);
+  const r = runRosterAudit({ seed: opts.seed, years: opts.years, sampleEveryYears: 10 });
+  const lines = [];
+  lines.push(`=== PROFONDEUR D'EFFECTIF — seed ${opts.seed}, ${opts.years} ans ===`);
+  if (r.crash) lines.push(`PLANTAGE : ${r.crash.message} (${r.crash.stack})`);
+
+  for (const s of r.snapshots) {
+    lines.push('');
+    lines.push(
+      `--- année ${s.year} — ${s.withBench}/${s.teams} équipes avec un banc (${Math.round(s.shareWithBench * 100)} %), ` +
+        `${s.subs} remplaçants pour ${s.wanted} places voulues ---`,
+    );
+    lines.push(['tier', 'équipes', 'avec banc', 'part', 'remplaçants', 'moyenne', 'médiane', 'p90'].map((h) => h.padStart(12)).join(''));
+    for (const [tier, t] of Object.entries(s.perTier)) {
+      lines.push(
+        [tier, t.teams, t.withBench, t.shareWithBench, t.subs, t.mean, t.median, t.p90]
+          .map((v) => String(v).padStart(12))
+          .join(''),
+      );
+    }
+  }
+
+  const b = r.bench;
+  lines.push('');
+  lines.push('--- Flux ---');
+  lines.push(`Entrées sur le banc      : ${r.flows.benchEntries} (dont ${r.flows.demotions} relégations internes, ${r.flows.externalSignings} arrivées externes)`);
+  lines.push(`Promotions internes      : ${r.flows.internalPromotions}`);
+  lines.push(`Départs depuis le banc   : ${r.flows.benchDepartures}`);
+  lines.push('');
+  lines.push('--- Parcours ---');
+  lines.push(`Joueurs observés ${b.tracked} | passés par un banc ${b.everSub} (${Math.round(b.shareEverSub * 100)} %)`);
+  lines.push(`Titulaires devenus remplaçants : ${b.starterThenSub} | remplaçants devenus titulaires : ${b.subThenStarter} (${Math.round(b.shareSubsPromoted * 100)} % des remplaçants)`);
+  lines.push(`Semaines sur le banc par joueur concerné : ${b.benchWeeksMean} en moyenne`);
+  lines.push(`Durée d'un passage : médiane ${b.spellWeeksMedian} sem. | p90 ${b.spellWeeksP90} | max ${b.spellWeeksMax}`);
+  lines.push(`Avant promotion : ${b.weeksBeforePromotionMean ?? '—'} sem. | avant départ : ${b.weeksBeforeDepartureMean ?? '—'} sem.`);
+
+  lines.push('');
+  lines.push('--- Trajectoires du §P réellement survenues ---');
+  for (const [kind, t] of Object.entries(r.trajectories)) {
+    lines.push(`${kind.padEnd(32)} ${t.nick} : ${JSON.stringify(t)}`);
+  }
+  lines.push('');
+  lines.push(`Invariants d'effectif violés : ${r.invariants.length}`);
+  for (const i of r.invariants.slice(0, 6)) lines.push(`  ${i.code} — ${i.detail}`);
+  lines.push(`Incohérences du validateur : ${r.issues.length}`);
   console.log(lines.join('\n'));
 }
 
