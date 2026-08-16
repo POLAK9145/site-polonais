@@ -88,6 +88,10 @@ export function runRosterAudit({ seed, years = 20, sampleEveryYears = 10 }) {
     if (!t) {
       t = {
         id,
+        // Le pseudo est capturé à la découverte : `pruneWorld` peut oublier la
+        // personne avant la fin, et un rapport qui affiche « p361 » au lieu
+        // d'un nom mesure encore l'absence plutôt que la trajectoire.
+        nick: null,
         everSub: false,
         everStarter: false,
         starterThenSub: false,
@@ -119,6 +123,7 @@ export function runRosterAudit({ seed, years = 20, sampleEveryYears = 10 }) {
   prev = roles();
   for (const [id, role] of prev) {
     const t = track(id);
+    t.nick ??= world.persons[id]?.nick ?? null;
     if (role === 'sub') {
       t.everSub = true;
       t.currentSpell = { start: world.week };
@@ -159,7 +164,10 @@ export function runRosterAudit({ seed, years = 20, sampleEveryYears = 10 }) {
             }
           }
           const p = world.persons[id];
-          if (p) t.peak = Math.max(t.peak, p.stats.peakRating);
+          if (p) {
+            t.peak = Math.max(t.peak, p.stats.peakRating);
+            t.nick ??= p.nick;
+          }
         }
         // Sorties du banc vers l'extérieur.
         for (const [id, role] of prev) {
@@ -284,7 +292,7 @@ function summarizePeople(people, years) {
 function findTrajectories(world, people) {
   const out = {};
   const all = [...people.values()];
-  const name = (id) => world.persons[id]?.nick ?? id;
+  const name = (t) => t.nick ?? world.persons[t.id]?.nick ?? t.id;
   const used = new Set();
   const take = (kind, list, rank, render) => {
     const pick = list.filter((t) => !used.has(t.id)).sort(rank)[0];
@@ -298,14 +306,14 @@ function findTrajectories(world, people) {
     'A_banc_vers_titulaire',
     all.filter((t) => t.subThenStarter && t.peak > 70),
     (a, b) => b.peak - a.peak,
-    (t) => ({ nick: name(t.id), peak: round(t.peak, 1), benchWeeks: t.benchWeeks }),
+    (t) => ({ nick: name(t), peak: round(t.peak, 1), benchWeeks: t.benchWeeks }),
   );
   // B — titulaire devenu remplaçant, puis retraité.
   take(
     'B_titulaire_vers_banc_retraite',
     all.filter((t) => t.starterThenSub && t.retiredAt !== null),
     (a, b) => b.peak - a.peak,
-    (t) => ({ nick: name(t.id), peak: round(t.peak, 1), retiredAt: round(t.retiredAt, 1) }),
+    (t) => ({ nick: name(t), peak: round(t.peak, 1), retiredAt: round(t.retiredAt, 1) }),
   );
   // C — passé par le banc, parti, redevenu titulaire ailleurs.
   take(
@@ -314,14 +322,14 @@ function findTrajectories(world, people) {
       (t) => t.everSub && t.spells.some((s) => s.outcome === 'departure') && t.everStarter,
     ),
     (a, b) => b.benchWeeks - a.benchWeeks,
-    (t) => ({ nick: name(t.id), benchWeeks: t.benchWeeks, spells: t.spells.length }),
+    (t) => ({ nick: name(t), benchWeeks: t.benchWeeks, spells: t.spells.length }),
   );
   // D — titulaire relégué, puis reparti.
   take(
     'D_titulaire_relegue_puis_parti',
     all.filter((t) => t.starterThenSub && t.spells.some((s) => s.outcome === 'departure')),
     (a, b) => b.peak - a.peak,
-    (t) => ({ nick: name(t.id), peak: round(t.peak, 1), benchWeeks: t.benchWeeks }),
+    (t) => ({ nick: name(t), peak: round(t.peak, 1), benchWeeks: t.benchWeeks }),
   );
   // E — long passage sur le banc suivi d'une promotion.
   take(
@@ -330,7 +338,7 @@ function findTrajectories(world, people) {
     (a, b) => b.benchWeeks - a.benchWeeks,
     (t) => {
       const spell = t.spells.find((s) => s.outcome === 'promotion' && s.end - s.start > 52);
-      return { nick: name(t.id), benchWeeks: spell.end - spell.start, peak: round(t.peak, 1) };
+      return { nick: name(t), benchWeeks: spell.end - spell.start, peak: round(t.peak, 1) };
     },
   );
   return out;
