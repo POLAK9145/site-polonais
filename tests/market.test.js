@@ -334,8 +334,17 @@ test('un départ déclenche une réaction en chaîne sur le marché', () => {
   const world = generateWorld({ seed: 5020, startYear: 2030 });
   toOffseason(world);
   // On rend le marché avide : des structures riches, des effectifs complets.
+  //
+  // « Riche » a changé de sens à l'étape 6. Ce test posait `org.budget`, ce qui
+  // suffisait tant que `salaryBand` lisait la trésorerie — un accumulateur. Les
+  // salaires se paient désormais sur les **revenus**, la trésorerie n'ouvrant
+  // qu'une marge bornée : gonfler le seul budget ne rend plus personne
+  // dépensier. On donne donc aux structures ce qui fait réellement leur pouvoir
+  // d'achat.
   for (const org of Object.values(world.orgs)) {
-    if (org.tier >= 3) org.budget = Math.max(org.budget, 3000000);
+    if (org.tier < 3) continue;
+    org.yearlyIncome = Math.max(org.yearlyIncome, 3000000);
+    org.budget = Math.max(org.budget, 3000000);
   }
   const teamOf = new Map();
   for (const p of Object.values(world.persons)) if (p.teamId) teamOf.set(p.id, p.teamId);
