@@ -250,8 +250,30 @@ function marketVivacity(flows, poolDurations, years, world) {
     renewalsPerSeason: round(flows.renewals / years, 1),
     sceneChangesPerSeason: round(flows.sceneChanges / years, 2),
     retirementsPerSeason: round(flows.retirements / years, 1),
+    // La distribution de l'attente est **bimodale**, à cause de la fenêtre de
+    // transfert : libéré pendant la fenêtre, on est repris en une ou deux
+    // semaines ; libéré en dehors, on attend la suivante. La médiane seule est
+    // donc une statistique fragile — elle bascule dès que la proportion des deux
+    // franchit la moitié, sans que la vitesse de placement ait changé dans l'un
+    // ou l'autre régime. D'où les percentiles intermédiaires et la part
+    // explicitement replacée dans la fenêtre.
     poolWeeksMedian: quantile(durations, 0.5),
+    poolWeeksP10: quantile(durations, 0.1),
+    poolWeeksP25: quantile(durations, 0.25),
+    poolWeeksP75: quantile(durations, 0.75),
     poolWeeksP90: quantile(durations, 0.9),
+    poolWeeksMean: durations.length
+      ? round(durations.reduce((s, v) => s + v, 0) / durations.length, 1)
+      : 0,
+    poolPlacements: durations.length,
+    /** Part replacée en deux semaines ou moins, c'est-à-dire dans la fenêtre. */
+    poolShareImmediate: durations.length
+      ? round(durations.filter((v) => v <= 2).length / durations.length, 3)
+      : 0,
+    /** Part qui attend plus d'une demi-saison. */
+    poolShareLong: durations.length
+      ? round(durations.filter((v) => v > 26).length / durations.length, 3)
+      : 0,
   };
 }
 

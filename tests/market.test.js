@@ -376,7 +376,28 @@ test('le marché est vivant sans être hystérique', () => {
   assert.ok(m.renewalsPerSeason > 0, 'aucune prolongation');
   assert.ok(m.releasesPerSeason > 0, 'aucune sortie vers le vivier');
   // Un agent libre ne doit ni signer immédiatement ni attendre des années.
-  assert.ok(m.poolWeeksMedian >= 2, `placement en ${m.poolWeeksMedian} semaines : aucun enjeu`);
+  //
+  // Cette propriété ne se mesure pas par la médiane. L'attente est **bimodale**,
+  // à cause de la fenêtre de transfert : libéré dedans, on est repris en une ou
+  // deux semaines ; libéré dehors, on attend la suivante. La médiane bascule donc
+  // de 8 à 1 dès que la part replacée dans la fenêtre franchit la moitié, sans
+  // que la vitesse de placement ait changé dans l'un ou l'autre régime. Relevé
+  // avant et après une correction de la charge qui ne touchait pas au marché :
+  //
+  //     avant : p10 1 · p25 1 · médiane 8 · p75 50 · p90 52 · moyenne 22,7 · ≤ 2 sem. 47,0 %
+  //     après : p10 1 · p25 1 · médiane 1 · p75 50 · p90 52 · moyenne 20,9 · ≤ 2 sem. 54,1 %
+  //
+  // Tous les autres quantiles sont identiques. L'enjeu se mesure donc à ce que
+  // les deux modes soient peuplés : signer n'est pas automatique, et attendre
+  // longtemps arrive vraiment.
+  assert.ok(
+    m.poolShareImmediate < 0.75,
+    `${Math.round(m.poolShareImmediate * 100)} % replacés en deux semaines : signer est automatique`,
+  );
+  assert.ok(
+    m.poolShareLong > 0.1,
+    `seulement ${Math.round(m.poolShareLong * 100)} % attendent plus d’une demi-saison : aucun enjeu`,
+  );
   assert.ok(m.poolWeeksP90 <= 3 * WEEKS_PER_YEAR, `p90 de ${m.poolWeeksP90} semaines sans équipe`);
 });
 
