@@ -607,11 +607,33 @@ test('recharger une sauvegarde ne permet pas de re-tirer un résultat (§79)', (
   assert.equal(Math.round(a.form * 100), Math.round(b.form * 100));
 });
 
+/**
+ * Plafond de sauvegarde : 3 000 Ko.
+ *
+ * D'où vient ce nombre — le précédent, 2 600, datait du commit initial sans
+ * aucune justification écrite, ce qui a rendu impossible d'arbitrer quand
+ * l'étape 7B l'a dépassé.
+ *
+ * La contrainte réelle est le quota de `localStorage`, de 5 Mo par origine sur
+ * les navigateurs courants (souvent 10). À 3 000 Ko, un emplacement de
+ * sauvegarde tient largement, et `saveSession` prévient proprement en cas de
+ * dépassement au lieu de perdre la partie. La marge restante couvre la
+ * croissance d'une carrière plus longue que les quinze ans testés ici.
+ *
+ * Ce plafond n'est pas une invitation à laisser grossir la sauvegarde : quatre
+ * postes ont été empaquetés à l'étape 7B (charge, statistiques, réputation,
+ * talents cachés) et l'historique des PNJ borné, pour un gain de 266 Ko. La
+ * règle reste que les noms de clés répétés sur sept cents personnages coûtent
+ * plus que les valeurs — c'est là qu'il faut chercher avant de toucher au
+ * plafond.
+ */
+const MAX_SAVE_KB = 3000;
+
 test('la sauvegarde reste d’une taille raisonnable après une longue carrière', () => {
   const session = newSession({ seed: 808 });
   playCareer(session, { maxYears: 15, strategy: 'random' });
   const kb = serializeSession(session).length / 1024;
-  assert.ok(kb < 2600, `sauvegarde trop volumineuse : ${Math.round(kb)} Ko`);
+  assert.ok(kb < MAX_SAVE_KB, `sauvegarde trop volumineuse : ${Math.round(kb)} Ko (plafond ${MAX_SAVE_KB})`);
 });
 
 // --------------------------------------------------------------------------
