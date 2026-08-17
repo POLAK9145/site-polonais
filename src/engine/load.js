@@ -107,8 +107,37 @@ const ACCUMULATION = 1;
  * ce qui produit une boucle positive : tout le monde convergeait vers le
  * plafond — mesuré, 86 à 97 de charge pour les quatre politiques, soit
  * exactement la saturation dégénérée que ce modèle devait supprimer. Une
- * décroissance proportionnelle garantit un équilibre borné et croissant avec
- * l'intensité, sans jamais épingler la valeur.
+ * décroissance proportionnelle donne un équilibre croissant avec l'intensité.
+ *
+ * DÉFAUT CONNU, MESURÉ, NON CORRIGÉ — l'équilibre n'est borné que jusqu'à une
+ * certaine intensité, et il n'est pas continu. Résolu analytiquement, avec
+ * `excess = (raw - SUSTAINABLE) × streakAmp` d'un côté et
+ * `drain = DECAY × v × (1 + v/100)` de l'autre :
+ *
+ *     intensité brute   amplification   charge d'équilibre
+ *            5               1,00              26,4
+ *            8               1,00              54,1
+ *            9               1,45              80,4      ← saut de 26 points
+ *           11               1,45              97,8
+ *           12 et plus       1,45         aucune (drain plafonne à 12,0)
+ *
+ * Deux conséquences. D'abord `HEAVY_WEEK` est un seuil binaire : une intensité
+ * de 8,9 ne fait jamais croître la série et laisse l'amplification à 1, une
+ * intensité de 9,1 la fait croître jusqu'à son plafond. Un point d'intensité
+ * déplace donc l'équilibre de 26 points, et le régime « pousse fort mais tient »
+ * n'existe pas. Ensuite, au-delà de 12 il n'y a plus d'équilibre du tout.
+ *
+ * En pratique la valeur n'est pas épinglée à 100 : l'effondrement et la
+ * récupération la font retomber, ce qui produit une **oscillation** entre deux
+ * attracteurs plutôt qu'un point fixe. Mesuré sur le grinder (volume 10,1 sans
+ * créneau de repos, donc intensité au-delà de 12) : p50 50,8 et 23 % des
+ * semaines à 100, avec un p75 de 96 — presque rien entre les deux régimes.
+ * Aucune autre politique d'audit ne dépasse 3 % de semaines au plafond.
+ *
+ * Corriger demande soit une décroissance assez sur-linéaire pour qu'aucune
+ * intensité bornée ne sature, soit une amplification de série continue en
+ * l'intensité au lieu d'être déclenchée par un seuil. Les deux touchent au cœur
+ * du modèle de charge et attendent un arbitrage explicite.
  */
 const DECAY = 0.06;
 
@@ -440,11 +469,18 @@ export function loadProgressionFactor(person) {
   //     grinder, pente linéaire : 32,8 % des semaines en rupture | série 122 | corrélation 0,896
   //     grinder, pente convexe  : 45,9 % des semaines en rupture | série 176 | corrélation 0,758
   //
-  // La raison n'est pas dans ce facteur : la charge du grinder ne s'équilibre
-  // pas, elle sature. Adoucir la note le fait progresser un peu mieux, donc
-  // monter en niveau, donc affronter une pression de contexte plus forte — et la
-  // charge repart. Le point de fonctionnement est **bistable** : voir la note
-  // sur l'équilibre accumulation / décroissance dans `updateLoad`.
+  // La raison n'est pas dans ce facteur, mais dans la zone où il est évalué :
+  // le grinder ne fait que la traverser. Distribution de sa charge, relevée
+  // semaine par semaine sur trois carrières de seize ans :
+  //
+  //     p25 45,6 · p50 50,8 · p75 96,0 · p90 100 · 23 % des semaines à 100
+  //
+  // Sa médiane est **sous** le seuil de 58 — la moitié de ses semaines ne
+  // coûtent donc rien — et près d'un quart sont au plafond, où elles coûtent le
+  // maximum. Entre les deux, presque personne. Voir la note sur l'équilibre
+  // accumulation / décroissance dans `updateLoad` : le seuil de 58 tombe dans le
+  // vide qui sépare les deux régimes, d'où un coût tout ou rien qu'aucun réglage
+  // de cette pente ne peut rendre progressif.
   const v = load.value;
   if (v <= 58) return 1;
   return clamp(1 - ((v - 58) / 42) * 0.62, 0.38, 1);
