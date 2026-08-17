@@ -559,7 +559,26 @@ const MAX_STRUCTURE_HISTORY = 20;
  * compteurs (`titles`) portent le palmarès ; l'historique n'a besoin de porter
  * que le récit récent.
  */
+/**
+ * Nombre de passages en équipe conservés pour un PNJ.
+ *
+ * L'étape 2 avait borné les historiques d'équipes et d'organisations en laissant
+ * de côté celui des personnes. Il est devenu le plus gros poste de la
+ * sauvegarde — 217 Ko sur 2 743 — à mesure que les carrières s'allongeaient.
+ *
+ * Personne ne lit le douzième passage d'un PNJ : le récit se sert des plus
+ * récents, et le monde oublie déjà progressivement ses habitants
+ * (`memoryYears`). Le joueur, lui, garde tout — c'est son histoire.
+ */
+const MAX_NPC_STINTS = 8;
+
 function trimStructureHistories(world) {
+  for (const p of Object.values(world.persons)) {
+    if (p.isPlayer || p.protectedFromPruning) continue;
+    if (p.teamHistory?.length > MAX_NPC_STINTS) {
+      p.teamHistory.splice(0, p.teamHistory.length - MAX_NPC_STINTS);
+    }
+  }
   for (const team of Object.values(world.teams)) {
     if (team.history?.length > MAX_STRUCTURE_HISTORY) {
       team.history.splice(0, team.history.length - MAX_STRUCTURE_HISTORY);

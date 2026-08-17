@@ -22,6 +22,120 @@ export const SAVE_VERSION = 1;
  */
 const ATTR_ORDER = ALL_ATTRS.map((a) => a.id);
 
+/**
+ * Même raison pour l'état de charge (étape 7B) : neuf champs nommés répétés sur
+ * sept cents personnages coûtaient 104 Ko sur 2 374, soit la totalité de
+ * l'écart mesuré avec la sauvegarde de l'étape 6. On applique le précédent des
+ * attributs — ordre fixe, et l'état en indice plutôt qu'en chaîne.
+ */
+const LOAD_ORDER = [
+  'value',
+  'weeksInState',
+  'heavyStreak',
+  'longestStreak',
+  'peak',
+  'episodes',
+  'lastEpisodeWeek',
+  'weeksHigh',
+];
+const LOAD_STATE_ORDER = [
+  'frais',
+  'fatigué',
+  'sous pression',
+  'surmené',
+  'épuisé',
+  'burnout',
+  'récupération',
+];
+
+function packLoad(load) {
+  if (!load) return undefined;
+  return [LOAD_STATE_ORDER.indexOf(load.state), ...LOAD_ORDER.map((k) => load[k] ?? 0)];
+}
+
+function unpackLoad(packed) {
+  if (!Array.isArray(packed)) return packed;
+  const load = { state: LOAD_STATE_ORDER[packed[0]] ?? 'frais' };
+  LOAD_ORDER.forEach((k, i) => {
+    load[k] = packed[i + 1];
+  });
+  return load;
+}
+
+/** Réputation : cinq canaux nommés, 45 Ko. Même traitement. */
+const REP_ORDER = ['pros', 'public', 'community', 'media', 'toxicity'];
+
+/** Talents cachés : quatre grandeurs nommées, en plus des plafonds déjà en tableau. */
+const HIDDEN_ORDER = ['growth', 'adaptability', 'longevity', 'burnoutFloor'];
+
+function packByOrder(obj, order) {
+  if (!obj) return undefined;
+  const packed = order.map((k) => obj[k] ?? null);
+  const extra = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (!order.includes(k)) extra[k] = v;
+  }
+  return Object.keys(extra).length ? { s: packed, x: extra } : packed;
+}
+
+function unpackByOrder(packed, order) {
+  if (!packed) return packed;
+  const arr = Array.isArray(packed) ? packed : packed.s;
+  if (!Array.isArray(arr)) return packed;
+  const out = {};
+  order.forEach((k, i) => {
+    out[k] = arr[i];
+  });
+  if (!Array.isArray(packed) && packed.x) Object.assign(out, packed.x);
+  return out;
+}
+
+/**
+ * Et pour les statistiques, pour la même raison : quinze compteurs nommés,
+ * répétés sur sept cents personnages, coûtaient 162 Ko.
+ */
+const STAT_ORDER = [
+  'matches',
+  'wins',
+  'losses',
+  'mvps',
+  'titles',
+  'minorTitles',
+  'finals',
+  'minorFinals',
+  'highestStatus',
+  'earnings',
+  'seasonsPro',
+  'peakRating',
+  'peakWeek',
+  'peakFollowers',
+  'internationalTitles',
+];
+
+function packStats(stats) {
+  if (!stats) return undefined;
+  const packed = STAT_ORDER.map((k) => stats[k] ?? null);
+  // Un compteur ajouté après coup ne doit pas disparaître dans la sauvegarde :
+  // on conserve à part ce que l'ordre fixe ne couvre pas.
+  const extra = {};
+  for (const [k, v] of Object.entries(stats)) {
+    if (!STAT_ORDER.includes(k)) extra[k] = v;
+  }
+  return Object.keys(extra).length ? { s: packed, x: extra } : packed;
+}
+
+function unpackStats(packed) {
+  if (!packed) return packed;
+  const arr = Array.isArray(packed) ? packed : packed.s;
+  if (!Array.isArray(arr)) return packed;
+  const stats = {};
+  STAT_ORDER.forEach((k, i) => {
+    stats[k] = arr[i];
+  });
+  if (!Array.isArray(packed) && packed.x) Object.assign(stats, packed.x);
+  return stats;
+}
+
 function packPersons(persons) {
   const out = {};
   for (const [id, p] of Object.entries(persons)) {
@@ -29,7 +143,11 @@ function packPersons(persons) {
       ...p,
       attrs: ATTR_ORDER.map((a) => p.attrs[a]),
       hidden: { ...p.hidden, ceilings: GROUP_IDS.map((g) => p.hidden.ceilings[g]) },
+      load: packLoad(p.load),
+      stats: packStats(p.stats),
+      reputation: packByOrder(p.reputation, REP_ORDER),
     };
+    out[id].hidden = packByOrder(out[id].hidden, HIDDEN_ORDER);
   }
   return out;
 }
@@ -43,6 +161,7 @@ function unpackPersons(persons) {
       });
       p.attrs = attrs;
     }
+    if (Array.isArray(p.hidden) || p.hidden?.s) p.hidden = unpackByOrder(p.hidden, HIDDEN_ORDER);
     if (Array.isArray(p.hidden?.ceilings)) {
       const ceilings = {};
       GROUP_IDS.forEach((g, i) => {
@@ -50,6 +169,9 @@ function unpackPersons(persons) {
       });
       p.hidden.ceilings = ceilings;
     }
+    if (Array.isArray(p.reputation) || p.reputation?.s) p.reputation = unpackByOrder(p.reputation, REP_ORDER);
+    if (Array.isArray(p.load)) p.load = unpackLoad(p.load);
+    if (Array.isArray(p.stats) || p.stats?.s) p.stats = unpackStats(p.stats);
   }
   return persons;
 }
