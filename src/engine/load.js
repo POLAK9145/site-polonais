@@ -431,21 +431,23 @@ export function loadProgressionFactor(person) {
   // 2, 3 et 5, et son pic moyen tombait de 61,3 à 54,9. Plus de risque pour
   // moins de récompense — l'inverse de l'arbitrage recherché.
   //
-  // La pente est **convexe**, et non linéaire, pour une raison mesurée. Avec une
-  // pente linéaire, la charge du grinder s'équilibrait vers 70 dès la première
-  // saison — soit un facteur de 0,82 en permanence. Relevé semaine par semaine :
+  // La pente reste **linéaire**. Une variante convexe (exposant 1,6) a été
+  // essayée et mesurée, sur l'idée qu'être fatigué devait coûter peu et qu'être
+  // détruit devait coûter cher. Elle adoucissait bien la note dans la bande
+  // 60–85 — 0,916 au lieu de 0,823 à charge 70 — mais le résultat mesuré allait
+  // dans l'autre sens :
   //
-  //     grinder  : facteur moyen 0,726 | 74 % des semaines sous 0,99 | 32 % sous 0,60
-  //     prudent  : facteur moyen 1,000 |  0 % des semaines sous 0,99
+  //     grinder, pente linéaire : 32,8 % des semaines en rupture | série 122 | corrélation 0,896
+  //     grinder, pente convexe  : 45,9 % des semaines en rupture | série 176 | corrélation 0,758
   //
-  // Le produit effort × charge valait alors 0,761 pour le grinder contre 0,920
-  // pour le prudent : le grind coûtait plus qu'il ne rapportait **à tous les
-  // horizons**, faute de phase où il rapporte encore. Le coût marginal de la
-  // surcharge doit s'accélérer, pas frapper d'emblée à pleine force : être
-  // simplement fatigué coûte peu, être détruit coûte cher.
+  // La raison n'est pas dans ce facteur : la charge du grinder ne s'équilibre
+  // pas, elle sature. Adoucir la note le fait progresser un peu mieux, donc
+  // monter en niveau, donc affronter une pression de contexte plus forte — et la
+  // charge repart. Le point de fonctionnement est **bistable** : voir la note
+  // sur l'équilibre accumulation / décroissance dans `updateLoad`.
   const v = load.value;
   if (v <= 58) return 1;
-  return clamp(1 - ((v - 58) / 42) ** 1.6 * 0.62, 0.38, 1);
+  return clamp(1 - ((v - 58) / 42) * 0.62, 0.38, 1);
 }
 
 /**
