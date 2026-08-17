@@ -10,6 +10,7 @@
  *   node tools/audit.js --mode=world --years=30
  *   node tools/audit.js --mode=trace --seed=7 --years=12
  *   node tools/audit.js --mode=economy --years=30
+ *   node tools/audit.js --mode=load --careers=12
  *
  * Les carrières sont réparties sur plusieurs processus : une carrière de
  * 20 ans coûte plusieurs secondes, et l'audit doit rester réalisable.
@@ -25,6 +26,7 @@ import { runAmateurAudit } from '../src/engine/audit/amateurAudit.js';
 import { runHierarchyAudit } from '../src/engine/audit/hierarchyAudit.js';
 import { runRosterAudit } from '../src/engine/audit/rosterAudit.js';
 import { runEconomyAudit } from '../src/engine/audit/economyAudit.js';
+import { runLoadAudit, HORIZONS } from '../src/engine/audit/loadAudit.js';
 import { GAMES_BY_ID } from '../src/data/games.js';
 import { POLICY_IDS } from '../src/engine/audit/policies.js';
 import { buildReport } from '../src/engine/audit/report.js';
@@ -160,6 +162,7 @@ async function main() {
   if (opts.mode === 'hierarchy') return runHierarchyMode(opts);
   if (opts.mode === 'roster') return runRosterMode(opts);
   if (opts.mode === 'economy') return runEconomyMode(opts);
+  if (opts.mode === 'load') return runLoadMode(opts);
 
   console.error(
     `Audit : ${opts.careers} carrières × ${opts.years} ans, seed ${opts.seed}, ${opts.workers} processus…`,
@@ -278,6 +281,65 @@ function runRosterMode(opts) {
   lines.push(`Invariants d'effectif violés : ${r.invariants.length}`);
   for (const i of r.invariants.slice(0, 6)) lines.push(`  ${i.code} — ${i.detail}`);
   lines.push(`Incohérences du validateur : ${r.issues.length}`);
+  console.log(lines.join('\n'));
+}
+
+/** Mode charge (étape 7B) : états, ruptures, longévité, progression par horizon. */
+function runLoadMode(opts) {
+  const perPolicy = Math.max(3, Math.round(opts.careers / 9));
+  console.error(`Charge : ${perPolicy} carrières par politique × ${opts.years} ans…`);
+  const r = runLoadAudit({ perPolicy, years: opts.years, seedRoot: `load-${opts.seed}` });
+  const lines = [];
+  lines.push(`=== CHARGE, ÉTATS ET LONGÉVITÉ — ${r.careers} carrières, seed ${opts.seed} ===`);
+  if (r.crashes) lines.push(`PLANTAGES : ${r.crashes}`);
+
+  lines.push('');
+  lines.push('--- Progression par horizon (le grind paie-t-il tôt et coûte-t-il tard ?) ---');
+  lines.push('politique'.padEnd(14) + HORIZONS.map((y) => `an ${y}`.padStart(7)).join('') + '   pic'.padStart(8) + ' années'.padStart(8));
+  for (const [id, p] of Object.entries(r.byPolicy)) {
+    lines.push(
+      id.padEnd(14) +
+        HORIZONS.map((y) => String(p.ratingAt[y] ?? '—').padStart(7)).join('') +
+        String(p.peak.mean).padStart(8) +
+        String(p.years.mean).padStart(8),
+    );
+  }
+
+  lines.push('');
+  lines.push('--- Condition moyenne et charge ---');
+  lines.push('politique'.padEnd(14) + 'fatigue'.padStart(9) + 'stress'.padStart(8) + 'moral'.padStart(8) + 'charge'.padStart(8) + 'série'.padStart(8) + ' états hauts'.padStart(13));
+  for (const [id, p] of Object.entries(r.byPolicy)) {
+    lines.push(
+      id.padEnd(14) +
+        String(p.condition.fatigue).padStart(9) +
+        String(p.condition.stress).padStart(8) +
+        String(p.condition.morale).padStart(8) +
+        String(p.condition.load).padStart(8) +
+        String(p.longestStreak).padStart(8) +
+        `${Math.round(p.shareHigh * 100)} %`.padStart(13),
+    );
+  }
+
+  lines.push('');
+  lines.push('--- Ruptures, récupérations, longévité ---');
+  for (const [id, p] of Object.entries(r.byPolicy)) {
+    lines.push(
+      `  ${id.padEnd(13)} ruptures ${String(p.episodes).padStart(5)} (${Math.round(p.shareWithEpisode * 100)} % des carrières) | ` +
+        `récupérations ${String(p.recoveries).padStart(5)} | retraites de charge ${p.loadRetirements} | ` +
+        `talents gâchés ${Math.round(p.wasted * 100)} % | potentiel→pic ${p.potentialToPeak}`,
+    );
+    lines.push(`     états : ${Object.entries(p.states).map(([s, v]) => `${s} ${v} %`).join(' · ')}`);
+    lines.push(`     fins  : ${Object.entries(p.retirementPaths).map(([k, n]) => `${k} ×${n}`).join(' · ')}`);
+  }
+
+  lines.push('');
+  lines.push('--- Ensemble ---');
+  const g = r.global;
+  lines.push(`  durée médiane ${g.years.median} ans (moyenne ${g.years.mean}) | pic médian ${g.peak.median} (moyenne ${g.peak.mean})`);
+  lines.push(`  talents gâchés ${Math.round(g.wasted * 100)} % | corrélation potentiel→pic ${g.potentialToPeak}`);
+  lines.push(`  signatures uniques ${g.uniqueSignatures}/${r.careers} (${Math.round(g.signatureShare * 100)} %)`);
+  lines.push(`  carrières avec au moins une rupture ${Math.round(g.shareWithEpisode * 100)} % | retraites de charge ${g.loadRetirements}`);
+  lines.push(`  archétypes : ${Object.entries(g.archetypes).map(([k, v]) => `${k} ${v}`).join(' · ')}`);
   console.log(lines.join('\n'));
 }
 

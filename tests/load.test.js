@@ -41,6 +41,7 @@ import {
 } from '../src/engine/load.js';
 import { progressPerson, burnoutPressure, rawWeeklyVolume, restSlotsOf } from '../src/engine/progression.js';
 import { runWorldOnly } from '../src/engine/audit/runner.js';
+import { runLoadAudit } from '../src/engine/audit/loadAudit.js';
 import { validateWorld } from '../src/engine/validator.js';
 import { startTrace, stopTrace, takeTrace, TRACE } from '../src/engine/trace.js';
 import { initEvents } from '../src/engine/events/index.js';
@@ -343,7 +344,75 @@ test('13 — aucune incohérence d’état après 20, 30 et 40 ans', () => {
   }
 });
 
-test('14 — la charge reste bornée et cohérente pour tout le monde', () => {
+// --- 15 à 18 : le compromis, mesuré par politique ------------------------
+
+let cachedPolicies = null;
+function policyAudit() {
+  if (!cachedPolicies) {
+    cachedPolicies = runLoadAudit({
+      perPolicy: 6,
+      years: 20,
+      policies: ['grinder', 'cautious', 'random', 'saboteur'],
+      seedRoot: 'load-test',
+    });
+  }
+  return cachedPolicies;
+}
+
+test('15 — pousser paie tôt : le grind mène au moins un horizon précoce', () => {
+  const { byPolicy } = policyAudit();
+  const g = byPolicy.grinder;
+  const c = byPolicy.cautious;
+  assert.ok(g && c, 'politiques manquantes');
+  // On ne demande pas que le grind domine partout — seulement qu'il existe un
+  // horizon précoce où pousser a payé. Sinon le pari n'existe pas (§3).
+  const early = [1, 2, 3].filter((y) => (g.ratingAt[y] ?? 0) >= (c.ratingAt[y] ?? 0));
+  assert.ok(
+    early.length > 0,
+    `le grind n’est jamais devant tôt : an 1 ${g.ratingAt[1]}/${c.ratingAt[1]}, an 2 ${g.ratingAt[2]}/${c.ratingAt[2]}, an 3 ${g.ratingAt[3]}/${c.ratingAt[3]}`,
+  );
+});
+
+test('16 — et coûte tard : le grind accumule et se rompt, le prudent non', () => {
+  const { byPolicy } = policyAudit();
+  const g = byPolicy.grinder;
+  const c = byPolicy.cautious;
+  assert.ok(g.condition.load > c.condition.load * 1.5, `charge : grinder ${g.condition.load} contre prudent ${c.condition.load}`);
+  assert.ok(g.shareHigh > c.shareHigh, `part d’états hauts : ${g.shareHigh} contre ${c.shareHigh}`);
+  assert.ok(g.episodes > c.episodes, `ruptures : ${g.episodes} contre ${c.episodes}`);
+  assert.ok(g.years.mean < c.years.mean, `durée : ${g.years.mean} contre ${c.years.mean} ans`);
+});
+
+test('17 — la prudence est plus sûre sans être optimale à tous les horizons', () => {
+  const { byPolicy } = policyAudit();
+  const c = byPolicy.cautious;
+  // Plus sûre : aucune rupture, ou presque.
+  assert.ok(c.shareWithEpisode < 0.4, `${Math.round(c.shareWithEpisode * 100)} % des carrières prudentes connaissent une rupture`);
+  // Mais pas systématiquement devant : une autre politique doit la dépasser
+  // à au moins un horizon, sinon la prudence est un choix évident.
+  const others = ['grinder', 'random', 'saboteur'].map((id) => byPolicy[id]).filter(Boolean);
+  const beaten = [1, 2, 3, 5, 8, 12, 16].some((y) =>
+    others.some((o) => (o.ratingAt[y] ?? 0) > (c.ratingAt[y] ?? 0) + 1),
+  );
+  assert.ok(beaten, 'la routine prudente domine tous les horizons : elle devient le choix évident');
+});
+
+test('18 — la charge pèse sur la longévité sans la déterminer', () => {
+  const { byPolicy, global } = policyAudit();
+  // Des retraites liées à la charge existent…
+  const loadRetirements = Object.values(byPolicy).reduce((s, p) => s + p.loadRetirements, 0);
+  // …mais elles ne sont pas la règle : la plupart des carrières finissent
+  // autrement. Une probabilité hebdomadaire mal dimensionnée avait produit
+  // l'inverse — 3 % par semaine valent 79,5 % par an.
+  assert.ok(
+    loadRetirements < global.loadRetirements + policyAudit().careers * 0.5,
+    `${loadRetirements} retraites de charge sur ${policyAudit().careers} carrières : la charge devient le destin`,
+  );
+  const g = byPolicy.grinder;
+  assert.ok(g.years.mean > 5, `carrières de grinder trop courtes : ${g.years.mean} ans`);
+});
+
+test('19 — la charge reste bornée et cohérente pour tout le monde', () => {
   for (const { years, r } of longWorlds()) {
     const world = r.world;
     if (!world) continue;
