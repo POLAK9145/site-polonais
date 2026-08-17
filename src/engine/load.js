@@ -90,10 +90,20 @@ const HEAVY_WEEK = 9;
 /**
  * Intensité qu'une semaine de professionnel absorbe sans rien accumuler.
  *
- * En dessous, la charge redescend. C'est ce seuil qui crée l'écart entre les
- * routines : les intensités mesurées vont de 9,2 (prudent) à 15,3 (grinder),
- * un rapport de 1,7 seulement, alors que les états visés vont de « frais » à
- * « épuisé ». Retrancher un socle amplifie l'écart là où il compte.
+ * En dessous, la charge redescend. C'est ce socle qui amplifie l'écart entre les
+ * routines : les volumes hebdomadaires vont de 4,9 à 10,1 selon la politique
+ * d'audit, un rapport de 2,1 seulement, alors que les états visés vont de
+ * « frais » à « épuisé ». Retrancher un socle creuse cet écart là où il compte —
+ * ce qui reste après soustraction va, pour ces deux volumes, de 1,9 à 7,1, soit
+ * un rapport de 3,7. (L'intensité réelle ajoute encore la densité de compétition
+ * et la pression du contexte, et divise par les créneaux de repos.)
+ *
+ * Une version précédente de ce commentaire annonçait des intensités mesurées de
+ * 9,2 à 15,3. Ces chiffres sont incompatibles avec les charges effectivement
+ * relevées — la routine prudente s'équilibre vers 20, ce qui correspond à une
+ * intensité de l'ordre de 4 — et je n'ai pas pu les reproduire. Ils sont retirés
+ * plutôt que remplacés par une autre estimation non vérifiée : la table
+ * d'équilibre sur `DECAY` est, elle, relevée dans le moteur.
  */
 const SUSTAINABLE = 3;
 
