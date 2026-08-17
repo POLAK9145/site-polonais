@@ -104,16 +104,34 @@ test('3 — les seuils de montée et de descente diffèrent (hystérésis)', () 
     `état atteint : ${p.load.state} (charge ${p.load.value.toFixed(1)})`,
   );
 
-  // On place artificiellement la charge dans la bande d'hystérésis.
-  p.load.value = 41;
-  const inBand = p.load.state;
-  updateLoad(p, { rawFatigue: 3, sensitivity: 1 }, 1);
-  assert.equal(p.load.state, inBand, `l’état a changé dans la bande d’hystérésis (${inBand} → ${p.load.state})`);
+  // La bande d'hystérésis de « sous pression » va de 37 (descente) à 46
+  // (montée). On construit le cas explicitement : dedans, l'état ne bouge pas.
+  //
+  // Une première version de ce test plaçait la charge à 41 sans fixer l'état,
+  // qui se trouvait être « épuisé » — dont la bande est 67-79. La descente était
+  // donc parfaitement légitime et c'est le test qui se trompait.
+  const band = bareSubject();
+  band.load.state = LOAD_STATES.PRESSURED;
+  band.load.value = 43;
+  updateLoad(band, { rawFatigue: 3.2, sensitivity: 1 }, 1);
+  assert.ok(
+    band.load.value > 37 && band.load.value < 46,
+    `charge sortie de la bande : ${band.load.value.toFixed(1)}`,
+  );
+  assert.equal(
+    band.load.state,
+    LOAD_STATES.PRESSURED,
+    `l’état a changé alors que la charge est restée dans la bande (${band.load.value.toFixed(1)})`,
+  );
 
-  // En dessous du seuil de descente, il change.
-  p.load.value = 30;
-  updateLoad(p, { rawFatigue: 3, sensitivity: 1 }, 1);
-  assert.notEqual(p.load.state, LOAD_STATES.PRESSURED, 'l’état ne redescend jamais');
+  // Sous le seuil de descente, il change — mais il n'a PAS fallu redescendre
+  // jusqu'au seuil de montée du palier inférieur : c'est bien une hystérésis.
+  const below = bareSubject();
+  below.load.state = LOAD_STATES.PRESSURED;
+  below.load.value = 34;
+  updateLoad(below, { rawFatigue: 3, sensitivity: 1 }, 1);
+  assert.notEqual(below.load.state, LOAD_STATES.PRESSURED, 'l’état ne redescend jamais');
+  assert.equal(below.load.state, LOAD_STATES.TIRED, `état après descente : ${below.load.state}`);
 });
 
 // --- 4 : l'état interdit ----------------------------------------------------

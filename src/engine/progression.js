@@ -379,11 +379,18 @@ export function npcRoutine(person, rng) {
  */
 export function burnoutPressure(person) {
   const load = person.load;
-  const accumulated = load ? (load.value - 55) / 45 : 0;
   // Chaque rupture laisse une marque : la troisième pèse plus que la première.
   const scars = load ? clamp((load.episodes ?? 0) * 0.22, 0, 0.9) : 0;
+  // Chaque terme est borné à zéro **séparément**. Les sommer signés laissait
+  // une fatigue basse annuler une charge élevée : mesuré, un joueur à 88 de
+  // charge mais momentanément reposé renvoyait une pression de 0, et le chemin
+  // de retraite lié à la charge était donc inerte. Être frais ne compense pas
+  // une accumulation, cela signifie seulement qu'elle ne se voit pas encore.
   return clamp(
-    (person.fatigue - 55) / 45 + (person.stress - 60) / 45 + Math.max(0, accumulated) + scars,
+    Math.max(0, (person.fatigue - 55) / 45) +
+      Math.max(0, (person.stress - 60) / 45) +
+      Math.max(0, load ? (load.value - 55) / 45 : 0) +
+      scars,
     0,
     3,
   );
