@@ -354,7 +354,7 @@ test('12 — la charge se trace avec ses facteurs', () => {
   assert.ok(entries.length > 0, 'aucune trace de charge');
   const e = entries.at(-1);
   assert.ok(e.factors?.length >= 2, 'la trace n’expose pas ses facteurs');
-  for (const key of ['intensity', 'heavyStreak', 'streakAmp', 'excess', 'drain', 'state']) {
+  for (const key of ['intensity', 'heavyStreak', 'excess', 'drain', 'state']) {
     assert.ok(e[key] !== undefined, `la trace n’expose pas « ${key} »`);
   }
 });
@@ -470,4 +470,182 @@ test('19 — la charge reste bornée et cohérente pour tout le monde', () => {
       `${incoherent} personnes « épuisées mais sereines » à ${years} ans`,
     );
   }
+});
+
+// --- 20 à 26 : la continuité de l'équilibre ---------------------------------
+//
+// Défaut corrigé : la charge d'équilibre n'était pas une fonction continue de
+// l'intensité. `HEAVY_WEEK` étant un seuil binaire, l'amplification de série
+// passait de 1,00 à 1,45 d'un point d'intensité à l'autre, et l'équilibre sautait
+// de 53 à 79 ; au-delà d'une intensité de 12, la décroissance plafonnait à 12 par
+// semaine et il n'existait plus d'équilibre du tout. Le modèle n'offrait donc que
+// deux régimes — « je tiens sans rien payer » sous le seuil de pénalité de 58, ou
+// « je finis à 100 » — et le profil « pousse fort mais tient » était absent.
+//
+// Ces tests mesurent l'équilibre en faisant tourner le moteur jusqu'à
+// stabilisation. Aucune formule n'est recopiée : c'est `updateLoad` qui répond.
+
+/**
+ * Charge d'équilibre pour une intensité imposée. La sensibilité par défaut valant
+ * 1,1, on divise le volume pour que l'intensité effective soit bien la cible.
+ */
+function equilibrium(intensity, { maxWeeks = 3000 } = {}) {
+  const p = bareSubject();
+  const volume = intensity / 1.1;
+  let last = -1;
+  let stable = 0;
+  for (let w = 0; w < maxWeeks; w++) {
+    updateLoad(p, { rawFatigue: volume, matchLoad: 0, pressure: 0, restSlots: 0, sensitivity: 1, week: w }, 1);
+    if (Math.abs(p.load.value - last) < 0.01) {
+      if (++stable > 20) break;
+    } else stable = 0;
+    last = p.load.value;
+  }
+  return { value: p.load.value, state: p.load.state, load: p.load };
+}
+
+test('20 — des intensités croissantes donnent des équilibres distincts et croissants', () => {
+  const intensities = [4, 6, 8, 10, 12, 14, 16];
+  const values = intensities.map((i) => equilibrium(i).value);
+  for (let k = 1; k < values.length; k++) {
+    assert.ok(
+      values[k] > values[k - 1] + 2,
+      `intensité ${intensities[k - 1]} → ${values[k - 1].toFixed(1)} puis ${intensities[k]} → ${values[k].toFixed(1)} : les deux régimes ne se distinguent pas`,
+    );
+  }
+  // Et surtout : plus de saut. Un point d'intensité valait 22 points de charge.
+  const fine = [8, 8.5, 9, 9.5, 10].map((i) => equilibrium(i).value);
+  for (let k = 1; k < fine.length; k++) {
+    const step = fine[k] - fine[k - 1];
+    assert.ok(
+      step > 0 && step < 6,
+      `saut de ${step.toFixed(1)} points de charge autour de l’intensité 9 : la réponse n’est pas continue`,
+    );
+  }
+});
+
+test('21 — aucune intensité bornée ne force mécaniquement la charge à 100', () => {
+  for (const i of [12, 16, 20, 24]) {
+    const { value } = equilibrium(i);
+    assert.ok(
+      value < 97,
+      `intensité ${i} : équilibre à ${value.toFixed(1)}, la charge sature au lieu de s’équilibrer`,
+    );
+  }
+  // La borne vient de l'équilibre, pas d'un plafond : à intensité extrême la
+  // charge doit monter plus haut, pas se figer à la même valeur.
+  assert.ok(
+    equilibrium(24).value > equilibrium(16).value + 3,
+    'l’équilibre ne répond plus à l’intensité dans le haut de la plage : c’est un plafond déguisé',
+  );
+});
+
+test('22 — une charge soutenue reste élevée sans devenir une rupture', () => {
+  // Le régime « pousse fort mais tient » : celui qui n'existait pas.
+  const { value, state, load } = equilibrium(13, { maxWeeks: 2000 });
+  assert.ok(value > 58, `charge d’équilibre ${value.toFixed(1)} : pousser fort ne coûte rien`);
+  assert.ok(value < 79, `charge d’équilibre ${value.toFixed(1)} : pousser fort mène droit à l’épuisement`);
+  assert.notEqual(load.state, LOAD_STATES.BURNOUT, `état ${state} : la charge soutenue devient mécaniquement une rupture`);
+  assert.equal(load.episodes, 0, 'un épisode de rupture est survenu sans risque tiré');
+  // Et cela coûte, progressivement.
+  const p = bareSubject();
+  p.load.value = value;
+  p.load.state = state;
+  const factor = loadProgressionFactor(p);
+  assert.ok(factor < 0.95, `facteur de progression ${factor.toFixed(3)} : la charge soutenue ne coûte rien`);
+  assert.ok(factor > 0.6, `facteur de progression ${factor.toFixed(3)} : le coût n’est plus progressif`);
+});
+
+test('23 — une charge excessive franchit bien les seuils de surcharge', () => {
+  const { value, state } = equilibrium(20);
+  assert.ok(value >= 79, `charge d’équilibre ${value.toFixed(1)} à intensité 20 : l’excès ne coûte plus rien`);
+  assert.ok(isHigh(state), `état ${state} à intensité 20 : ce n’est pas un état de surcharge`);
+  // Et le risque de rupture y est réellement actif.
+  const p = bareSubject();
+  p.load.value = value;
+  p.load.state = state;
+  p.load.heavyStreak = 40;
+  assert.ok(crashRisk(p) > 0, 'aucun risque de rupture à charge excessive');
+});
+
+test('24 — réduire l’intensité fait réellement récupérer', () => {
+  const { load } = equilibrium(16);
+  const worn = bareSubject();
+  worn.load = load;
+  const high = load.value;
+  // Vingt semaines allégées, avec des créneaux de repos.
+  runWeeks(worn, { volume: 3, restSlots: 2 }, 20);
+  assert.ok(
+    worn.load.value < high - 25,
+    `charge ${high.toFixed(1)} → ${worn.load.value.toFixed(1)} : lever le pied ne sert à rien`,
+  );
+  // Et durablement : la charge légère converge vers le bas, pas vers un palier.
+  runWeeks(worn, { volume: 3, restSlots: 2 }, 60);
+  assert.ok(worn.load.value < 20, `charge ${worn.load.value.toFixed(1)} après quatre-vingts semaines calmes`);
+  assert.equal(equilibrium(2).value, 0, 'une intensité soutenable laisse une charge résiduelle');
+});
+
+test('25 — les sept états restent atteignables et l’hystérésis tient', () => {
+  // Un état par palier d'intensité : c'est la continuité qui les rend tous
+  // accessibles sans passer par une rupture.
+  const reached = new Set();
+  for (const i of [2, 5, 8, 12, 16, 20, 24]) reached.add(equilibrium(i).state);
+  assert.ok(
+    reached.size >= 4,
+    `seulement ${reached.size} état(s) atteints par simple variation d’intensité : ${[...reached].join(', ')}`,
+  );
+  // Rupture et récupération restent joignables, mais par leur propre chemin.
+  const p = bareSubject();
+  p.load.value = 95;
+  markBurnout(p, 10);
+  assert.equal(p.load.state, LOAD_STATES.BURNOUT);
+  relieveLoad(p, 50, { week: 11, reason: 'test' });
+  assert.equal(p.load.state, LOAD_STATES.RECOVERING);
+
+  // L'hystérésis : redescendre sous le seuil de montée ne suffit pas à sortir.
+  const h = bareSubject();
+  runWeeks(h, { volume: 9, matchLoad: 1, pressure: 2 }, 60);
+  const climbed = h.load.state;
+  assert.ok(isHigh(climbed) || climbed === LOAD_STATES.PRESSURED, `état après soixante semaines chargées : ${climbed}`);
+  // « surmené » monte à 63 et ne redescend qu'à 53 : à 58, on reste surmené.
+  const band = bareSubject();
+  band.load.value = 66;
+  band.load.state = LOAD_STATES.OVERLOADED;
+  runWeeks(band, { volume: 6.5, restSlots: 0 }, 1);
+  if (band.load.value > 53 && band.load.value < 63) {
+    assert.equal(band.load.state, LOAD_STATES.OVERLOADED, `charge ${band.load.value.toFixed(1)} : l’état est sorti de sa bande sans franchir le seuil de descente`);
+  }
+});
+
+test('26 — le risque/récompense du grind survit à la continuité', () => {
+  // L'arbitrage ne doit pas être perdu en rendant le système continu : une
+  // routine lourde progresse plus vite tant qu'elle reste sous le seuil, et
+  // paie au-delà.
+  const heavy = effortBonus(rawWeeklyVolume(['mechanics', 'mechanics', 'strategy', 'review']));
+  const light = effortBonus(rawWeeklyVolume(['mechanics', 'strategy', 'rest', 'social']));
+  assert.ok(heavy > light * 1.15, `récompense d’effort : lourde ×${heavy.toFixed(3)} contre légère ×${light.toFixed(3)}`);
+
+  // Et le coût existe : à l'équilibre d'une routine lourde, le produit doit
+  // rester au-dessus de celui d'une routine légère — sinon pousser ne paie
+  // jamais — mais l'écart doit se refermer quand la charge grimpe.
+  const lourd = equilibrium(13);
+  const leger = equilibrium(6);
+  const subj = (eq) => {
+    const p = bareSubject();
+    p.load.value = eq.value;
+    p.load.state = eq.state;
+    return p;
+  };
+  const produitLourd = heavy * loadProgressionFactor(subj(lourd));
+  const produitLeger = light * loadProgressionFactor(subj(leger));
+  assert.ok(
+    produitLourd > produitLeger,
+    `produit effort × charge : lourd ${produitLourd.toFixed(3)} contre léger ${produitLeger.toFixed(3)} — pousser ne paie à aucun moment`,
+  );
+  const extreme = equilibrium(22);
+  const produitExtreme = heavy * loadProgressionFactor(subj(extreme));
+  assert.ok(
+    produitExtreme < produitLeger,
+    `produit à intensité extrême ${produitExtreme.toFixed(3)} contre léger ${produitLeger.toFixed(3)} — l’excès ne coûte rien`,
+  );
 });

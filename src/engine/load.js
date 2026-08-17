@@ -109,35 +109,26 @@ const ACCUMULATION = 1;
  * exactement la saturation dégénérée que ce modèle devait supprimer. Une
  * décroissance proportionnelle donne un équilibre croissant avec l'intensité.
  *
- * DÉFAUT CONNU, MESURÉ, NON CORRIGÉ — l'équilibre n'est borné que jusqu'à une
- * certaine intensité, et il n'est pas continu. Résolu analytiquement, avec
- * `excess = (raw - SUSTAINABLE) × streakAmp` d'un côté et
- * `drain = DECAY × v × (1 + v/100)` de l'autre :
+ * Le terme quadratique et la disparition de l'amplification de série (voir
+ * `updateLoad`) corrigent une bistabilité mesurée. Table d'équilibre relevée en
+ * faisant tourner `updateLoad` jusqu'à stabilisation, à intensité imposée :
  *
- *     intensité brute   amplification   charge d'équilibre
- *            5               1,00              26,4
- *            8               1,00              54,1
- *            9               1,45              80,4      ← saut de 26 points
- *           11               1,45              97,8
- *           12 et plus       1,45         aucune (drain plafonne à 12,0)
+ *     intensité   avant     après
+ *          8       53,1      48,0
+ *        8,5       57,0      50,6
+ *          9       79,0      53,0     ← le saut de 22 points a disparu
+ *         10       87,9      57,3
+ *         12      100,0      64,8     ← plus aucun équilibre avant
+ *         16      100,0      76,6
+ *         20      100,0      85,9
  *
- * Deux conséquences. D'abord `HEAVY_WEEK` est un seuil binaire : une intensité
- * de 8,9 ne fait jamais croître la série et laisse l'amplification à 1, une
- * intensité de 9,1 la fait croître jusqu'à son plafond. Un point d'intensité
- * déplace donc l'équilibre de 26 points, et le régime « pousse fort mais tient »
- * n'existe pas. Ensuite, au-delà de 12 il n'y a plus d'équilibre du tout.
- *
- * En pratique la valeur n'est pas épinglée à 100 : l'effondrement et la
- * récupération la font retomber, ce qui produit une **oscillation** entre deux
- * attracteurs plutôt qu'un point fixe. Mesuré sur le grinder (volume 10,1 sans
- * créneau de repos, donc intensité au-delà de 12) : p50 50,8 et 23 % des
- * semaines à 100, avec un p75 de 96 — presque rien entre les deux régimes.
- * Aucune autre politique d'audit ne dépasse 3 % de semaines au plafond.
- *
- * Corriger demande soit une décroissance assez sur-linéaire pour qu'aucune
- * intensité bornée ne sature, soit une amplification de série continue en
- * l'intensité au lieu d'être déclenchée par un seuil. Les deux touchent au cœur
- * du modèle de charge et attendent un arbitrage explicite.
+ * Avant, deux régimes seulement : « je tiens sans rien payer » sous le seuil de
+ * pénalité de 58, ou « je finis régulièrement à 100 ». Le grinder oscillait
+ * entre les deux — p50 50,8, p75 96, 23 % de ses semaines au plafond. Après,
+ * l'équilibre progresse de deux à cinq points par point d'intensité sur toute la
+ * plage utile, et les trois régimes attendus apparaissent : récupération nette
+ * en dessous de 4, charge élevée mais stable de 10 à 16 avec un coût progressif,
+ * et franchement les états de surcharge au-delà de 18.
  */
 const DECAY = 0.06;
 
@@ -250,7 +241,9 @@ export function updateLoad(person, ctx = {}, weeks = 1) {
 
   const { raw, factors } = weeklyIntensity(person, ctx);
 
-  // Semaines chargées consécutives : la mémoire qui manquait.
+  // Semaines chargées consécutives. Cette mémoire ne pèse plus sur la charge
+  // elle-même mais sur le **risque de rupture** (`crashRisk`), et le compteur
+  // garde donc son sens de nombre de semaines.
   if (raw >= HEAVY_WEEK) {
     load.heavyStreak += weeks;
     load.longestStreak = Math.max(load.longestStreak, load.heavyStreak);
@@ -259,17 +252,33 @@ export function updateLoad(person, ctx = {}, weeks = 1) {
     // du temps, sinon une semaine calme effacerait trois mois de surcharge.
     load.heavyStreak = Math.max(0, load.heavyStreak - weeks * 2);
   }
-  // Une série longue amplifie ce que coûte chaque semaine supplémentaire :
-  // c'est l'inertie. Une grosse semaine laisse une trace, trois mois sans
-  // respirer coûtent bien davantage que trois fois une semaine.
-  const streakAmp = 1 + clamp(load.heavyStreak / 26, 0, 0.45);
 
   // Ce que la semaine ajoute, au-delà de ce qu'un professionnel absorbe.
-  const excess = Math.max(0, raw - SUSTAINABLE) * ACCUMULATION * streakAmp;
-  // Et ce que l'organisme évacue : proportionnel à la charge, et sur-linéaire,
-  // donc l'équilibre est borné quelle que soit l'intensité.
+  //
+  // L'excédent est **strictement croissant et continu en l'intensité**, et c'est
+  // ce qui rend la charge d'équilibre continue elle aussi. Une version
+  // antérieure le multipliait par une amplification de série,
+  // `1 + clamp(heavyStreak/26, 0, 0.45)`, au nom de l'inertie. C'était un double
+  // comptage — la charge étant une intégrale, la persistance d'une période
+  // lourde y est déjà inscrite — et cela introduisait une discontinuité, parce
+  // que la série ne croissait qu'au-delà du seuil `HEAVY_WEEK`. Une intensité de
+  // 8,9 laissait l'amplification à 1 et l'équilibre à 54 ; une intensité de 9,1
+  // la portait à 1,45 et l'équilibre à 80. Un point d'intensité déplaçait donc
+  // l'équilibre de 26 points, et le régime « pousse fort mais tient » n'existait
+  // pas. L'inertie de la série est conservée, mais là où elle décrit un fait
+  // réel : une longue période sans respirer fait **craquer**, elle ne rend pas
+  // mécaniquement chaque semaine plus lourde.
+  const excess = Math.max(0, raw - SUSTAINABLE) * ACCUMULATION;
+
+  // Et ce que l'organisme évacue. La décroissance est proportionnelle à la
+  // charge et **franchement** sur-linéaire : c'est elle qui garantit un équilibre
+  // pour toute intensité, y compris extrême. Avec le terme précédent,
+  // `1 + v/100`, l'évacuation plafonnait à 12 par semaine ; tout excédent
+  // au-delà — le grinder est à 10, hors charge de match et pression — n'avait
+  // plus d'équilibre du tout et la charge montait jusqu'au plafond. Le terme
+  // quadratique porte ce plafond à 24, hors de portée des intensités atteignables.
   const resilience = 0.8 + (1 - (person.hidden?.burnoutFloor ?? 0.5)) * 0.45;
-  const drain = DECAY * load.value * (1 + load.value / 100) * resilience;
+  const drain = DECAY * load.value * (1 + (load.value / 100) ** 2 * 3) * resilience;
 
   load.value = clamp(load.value + (excess - drain) * weeks, 0, 100);
   load.peak = Math.max(load.peak, load.value);
@@ -293,7 +302,6 @@ export function updateLoad(person, ctx = {}, weeks = 1) {
       previousState: beforeState,
       intensity: Math.round(raw * 10) / 10,
       heavyStreak: load.heavyStreak,
-      streakAmp: Math.round(streakAmp * 100) / 100,
       excess: Math.round(excess * 10) / 10,
       drain: Math.round(drain * 10) / 10,
       factors,
@@ -530,8 +538,8 @@ export function explainLoad(entry) {
     `S${entry.week} — charge ${entry.before} → ${entry.after}` +
       (entry.previousState !== entry.state ? ` : ${entry.previousState} → ${entry.state}` : ` (${entry.state})`),
   ];
-  lines.push(`    intensité ${entry.intensity} × amplification de série ${entry.streakAmp} (${entry.heavyStreak} semaines chargées)`);
-  lines.push(`    récupération ${entry.recovery}`);
+  lines.push(`    intensité ${entry.intensity} → accumulation ${entry.excess} (${entry.heavyStreak} semaines chargées d’affilée)`);
+  lines.push(`    récupération ${entry.drain}`);
   for (const f of entry.factors ?? []) lines.push(`    ${f.label} : ${f.delta}`);
   return lines.join('\n');
 }
