@@ -17,7 +17,7 @@ import { ATTRIBUTE_GROUPS, GROUP_IDS, attrsOfGroup } from './attributes.js';
 import { ACTIVITIES_BY_ID, SLOTS_PER_WEEK } from '../data/training.js';
 import { mods, age as personAge, getFamiliarity, setFamiliarity, STATUS } from './person.js';
 import { WEEKS_PER_YEAR } from './time.js';
-import { updateLoad, loadCoupling, loadProgressionFactor } from './load.js';
+import { updateLoad, loadCoupling, loadProgressionFactor, effortBonus } from './load.js';
 
 /**
  * Rythme de base. Calibré pour qu'un joueur de 17 ans au talent moyen qui
@@ -64,6 +64,31 @@ function ageLearningFactor(a) {
   return 0.02;
 }
 
+/**
+ * Volume brut d'une semaine : la somme des coûts positifs des activités.
+ *
+ * Sert de mesure d'effort, pour la récompense immédiate comme pour la charge.
+ * Les créneaux de récupération ne s'en retranchent pas — ils aident à digérer
+ * la semaine, ils n'annulent pas le travail fourni.
+ */
+export function rawWeeklyVolume(routine) {
+  let volume = 0;
+  for (const id of routine) {
+    const cost = ACTIVITIES_BY_ID[id]?.fatigue ?? 0;
+    if (cost > 0) volume += cost;
+  }
+  return volume;
+}
+
+/** Créneaux de récupération d'une routine. */
+export function restSlotsOf(routine) {
+  let slots = 0;
+  for (const id of routine) {
+    if ((ACTIVITIES_BY_ID[id]?.fatigue ?? 0) < 0) slots++;
+  }
+  return slots;
+}
+
 /** Convertit une routine (liste d'activités) en poids par famille. */
 export function routineWeights(routine) {
   const weights = {};
@@ -101,14 +126,15 @@ export function progressPerson(person, ctx, rng) {
   const m = mods(person);
   const { weights } = routineWeights(routine);
 
-  // Charge : une cloche, pas une pente (étape 7B). Pousser paie à court terme,
-  // et ce sont les états hauts qui coûtent.
+  // Deux termes séparés remplacent le malus plat (étape 7B) : la récompense
+  // vient de l'effort de la semaine, le coût de la charge accumulée. « Je
+  // pousse maintenant pour progresser plus vite, au risque de payer plus tard »
+  // devient donc littéralement la formule.
   //
-  // Remplace `fatigueFactor = clamp(1 - max(0, fatigue-55)/75, 0.45, 1)`, un
-  // malus plat qui faisait du travail intensif un coût certain sans
-  // contrepartie : mesuré, la politique grinder subissait ×0,643 en continu et
-  // la politique saboteur ×0,472, sans jamais rien gagner en échange. Le risque
-  // vit désormais dans `crashRisk`, pas dans un multiplicateur permanent.
+  // `fatigueFactor = clamp(1 - max(0, fatigue-55)/75, 0.45, 1)` ne faisait que
+  // punir : mesuré, ×0,643 en continu pour un grinder et ×0,472 pour un
+  // saboteur, sans jamais rien gagner en échange.
+  const effort = effortBonus(rawWeeklyVolume(routine));
   const loadFactor = loadProgressionFactor(person);
   const stressFactor = clamp(1 - Math.max(0, person.stress - 60) / 90, 0.6, 1);
   const moraleFactor = clamp(0.75 + person.morale / 250, 0.7, 1.15);
@@ -140,6 +166,7 @@ export function progressPerson(person, ctx, rng) {
           person.hidden.growth *
           m.growth *
           coachFactor *
+          effort *
           loadFactor *
           stressFactor *
           moraleFactor *
@@ -205,7 +232,6 @@ function applyConditionEffects(person, routine, weeks, ctx, rng) {
   // --- Charge accumulée (étape 7B) -----------------------------------------
   // Elle se met à jour AVANT le couplage : la charge de cette semaine pèse sur
   // la fatigue, le stress et le moral de cette semaine.
-  const restSlots = routine.filter((id) => (ACTIVITIES_BY_ID[id]?.fatigue ?? 0) < 0).length;
   updateLoad(
     person,
     {
@@ -213,8 +239,8 @@ function applyConditionEffects(person, routine, weeks, ctx, rng) {
       matchLoad: ctx.matchLoad ?? 0,
       pressure: ctx.pressure ?? 0,
       sensitivity: m.burnoutRisk,
-      // Se reposer accélère la digestion de la charge, sans effacer l'intensité.
-      restBonus: 1 + restSlots * 0.45,
+      // Se reposer aide à digérer la charge, sans effacer l'intensité.
+      restSlots: restSlotsOf(routine),
       week: ctx.absWeek ?? 0,
     },
     weeks,

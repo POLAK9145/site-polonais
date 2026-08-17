@@ -85,7 +85,32 @@ const BURNOUT_ENTRY = 93;
 const RECOVERY_EXIT = 42;
 
 /** Intensité hebdomadaire au-delà de laquelle une semaine compte comme chargée. */
-const HEAVY_WEEK = 7;
+const HEAVY_WEEK = 9;
+
+/**
+ * Intensité qu'une semaine de professionnel absorbe sans rien accumuler.
+ *
+ * En dessous, la charge redescend. C'est ce seuil qui crée l'écart entre les
+ * routines : les intensités mesurées vont de 9,2 (prudent) à 15,3 (grinder),
+ * un rapport de 1,7 seulement, alors que les états visés vont de « frais » à
+ * « épuisé ». Retrancher un socle amplifie l'écart là où il compte.
+ */
+const SUSTAINABLE = 3;
+
+/** Conversion intensité excédentaire → charge. */
+const ACCUMULATION = 1;
+
+/**
+ * Décroissance **proportionnelle** à la charge, et sur-linéaire.
+ *
+ * La version précédente ralentissait la récupération quand la charge montait,
+ * ce qui produit une boucle positive : tout le monde convergeait vers le
+ * plafond — mesuré, 86 à 97 de charge pour les quatre politiques, soit
+ * exactement la saturation dégénérée que ce modèle devait supprimer. Une
+ * décroissance proportionnelle garantit un équilibre borné et croissant avec
+ * l'intensité, sans jamais épingler la valeur.
+ */
+const DECAY = 0.06;
 
 /** État de charge neuf. */
 export function createLoadState() {
@@ -131,17 +156,25 @@ export function weeklyIntensity(person, ctx = {}) {
   const volume = add('volume', 'volume d’entraînement', ctx.rawFatigue ?? 0);
 
   // 2. Densité de compétition.
-  const matches = add('matches', 'compétitions', (ctx.matchLoad ?? 0) * 2.2);
+  const matches = add('matches', 'compétitions', (ctx.matchLoad ?? 0) * 1.5);
 
   // 3. Pression du contexte : niveau de la structure, statut de titulaire,
-  //    attentes, résultats récents.
-  const pressure = add('pressure', 'pression du contexte', ctx.pressure ?? 0);
+  //    attentes, résultats récents. Modérée volontairement — elle doit nuancer
+  //    la charge selon la situation, pas dominer le volume choisi.
+  const pressure = add('pressure', 'pression du contexte', (ctx.pressure ?? 0) * 0.6);
 
-  // 4. Sensibilité personnelle (traits) et plancher de récupération.
+  // 4. Sensibilité personnelle (traits).
   const sensitivity = 0.75 + (ctx.sensitivity ?? 1) * 0.35;
-  const raw = Math.max(0, volume + matches + pressure) * sensitivity;
   add('sensitivity', `sensibilité ×${Math.round(sensitivity * 100) / 100}`, 0);
 
+  // 5. Le repos ne se soustrait pas de l'intensité — il aide à la digérer.
+  //    Un créneau de repos allège d'un tiers ce que la semaine laisse derrière
+  //    elle, sans effacer le travail fourni.
+  const restSlots = ctx.restSlots ?? 0;
+  const digest = 1 + restSlots * 0.35;
+  if (restSlots) add('rest', `${restSlots} créneau(x) de récupération (÷${Math.round(digest * 100) / 100})`, 0);
+
+  const raw = (Math.max(0, volume + matches + pressure) * sensitivity) / digest;
   return { raw, factors };
 }
 
@@ -197,16 +230,19 @@ export function updateLoad(person, ctx = {}, weeks = 1) {
     // du temps, sinon une semaine calme effacerait trois mois de surcharge.
     load.heavyStreak = Math.max(0, load.heavyStreak - weeks * 2);
   }
-  // Une série longue amplifie ce que coûte chaque semaine supplémentaire.
-  const streakAmp = 1 + clamp(load.heavyStreak / 18, 0, 0.7);
+  // Une série longue amplifie ce que coûte chaque semaine supplémentaire :
+  // c'est l'inertie. Une grosse semaine laisse une trace, trois mois sans
+  // respirer coûtent bien davantage que trois fois une semaine.
+  const streakAmp = 1 + clamp(load.heavyStreak / 26, 0, 0.45);
 
-  // Récupération : d'autant plus lente que la charge est haute — l'inertie.
-  const baseRecovery = 4.2 + (1 - (person.hidden?.burnoutFloor ?? 0.5)) * 2.4;
-  const drag = 1 - clamp(load.value / 160, 0, 0.55);
-  const recovery = baseRecovery * drag * (ctx.restBonus ?? 1);
+  // Ce que la semaine ajoute, au-delà de ce qu'un professionnel absorbe.
+  const excess = Math.max(0, raw - SUSTAINABLE) * ACCUMULATION * streakAmp;
+  // Et ce que l'organisme évacue : proportionnel à la charge, et sur-linéaire,
+  // donc l'équilibre est borné quelle que soit l'intensité.
+  const resilience = 0.8 + (1 - (person.hidden?.burnoutFloor ?? 0.5)) * 0.45;
+  const drain = DECAY * load.value * (1 + load.value / 100) * resilience;
 
-  const gain = raw * streakAmp;
-  load.value = clamp(load.value + (gain - recovery) * weeks, 0, 100);
+  load.value = clamp(load.value + (excess - drain) * weeks, 0, 100);
   load.peak = Math.max(load.peak, load.value);
 
   const next = nextState(load, load.value);
@@ -229,7 +265,8 @@ export function updateLoad(person, ctx = {}, weeks = 1) {
       intensity: Math.round(raw * 10) / 10,
       heavyStreak: load.heavyStreak,
       streakAmp: Math.round(streakAmp * 100) / 100,
-      recovery: Math.round(recovery * 10) / 10,
+      excess: Math.round(excess * 10) / 10,
+      drain: Math.round(drain * 10) / 10,
       factors,
     });
   }
@@ -334,21 +371,37 @@ export function relieveLoad(person, amount, { week = 0, reason = 'repos' } = {})
 }
 
 /**
- * Effet de la charge sur la progression : **une cloche, pas une pente**.
+ * Récompense immédiate du travail fourni cette semaine.
  *
- * Pousser paie à court terme — jusqu'à +24 % autour d'une charge moyenne —
- * puis le rendement s'inverse et les états hauts coûtent cher. C'est ce qui
- * remplace le malus plat `1 - max(0, fatigue-55)/75`, lequel faisait du travail
- * intensif un coût certain sans contrepartie.
+ * C'est le premier des deux termes qui remplacent le malus plat. Il ne dépend
+ * que de l'effort de la semaine : travailler beaucoup paie **tout de suite**,
+ * quel que soit l'état de charge.
+ *
+ * Une première version faisait dépendre la récompense de la charge elle-même —
+ * une cloche culminant à charge moyenne. C'était une erreur de conception : il
+ * fallait être déjà usé pour progresser vite, et mesuré, aucune politique
+ * n'atteignait jamais la moitié montante de la courbe. La récompense doit venir
+ * de ce qu'on fait, le coût de ce qu'on accumule.
+ */
+export function effortBonus(rawFatigue = 0) {
+  return 1 + clamp(rawFatigue / 11, 0, 1) * 0.32;
+}
+
+/**
+ * Coût différé de la charge accumulée — le second terme.
+ *
+ * Rien en dessous de « sous pression » : accumuler un peu ne coûte pas. Au-delà,
+ * la note tombe, et elle tombe d'autant plus que l'état est haut. C'est ici que
+ * se paie ce que `effortBonus` a avancé.
  */
 export function loadProgressionFactor(person) {
   const load = person.load;
   if (!load) return 1;
-  const v = load.value;
-  if (v <= 50) return 1 + (v / 50) * 0.24;
   if (load.state === LOAD_STATES.BURNOUT) return 0.35;
-  if (load.state === LOAD_STATES.RECOVERING) return 0.8;
-  return clamp(1.24 - ((v - 50) / 50) * 0.82, 0.42, 1.24);
+  if (load.state === LOAD_STATES.RECOVERING) return 0.82;
+  const v = load.value;
+  if (v <= 46) return 1;
+  return clamp(1 - ((v - 46) / 54) * 0.72, 0.28, 1);
 }
 
 /**
