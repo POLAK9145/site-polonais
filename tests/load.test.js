@@ -11,8 +11,21 @@
  *     prudent  : fatigue  1,2 | stress  0,2 | moral 98,4
  *     saboteur : fatigue 97,8 | stress  2,0 | moral 98,3   ← épuisé et serein
  *
+ * Cette incohérence avait un coût mécanique, visible dans la comparaison sur
+ * 1400 carrières. Une fatigue de 97 plaçait l'ancien `fatigueFactor` exactement
+ * à son plancher de 0,45, soit un malus permanent de −55 % sur la progression —
+ * pour une charge réelle de 40 seulement (volume de routine 6,2, un créneau de
+ * repos). En faisant dériver la fatigue de la charge, 7B ramène cette fatigue à
+ * 48,5, fait monter le stress à 66,4, et le facteur de progression passe de
+ * 0,450 à 0,965 : ×2,14. D'où une legacy du saboteur qui monte de 30,88 à 38,86
+ * et des titres de 0,06 à 0,26. Ce n'est pas une régression mais la disparition
+ * d'une pénalité qui n'était que le symptôme du défaut corrigé.
+ *
  * Et `burnoutPressure()`, exportée avec le commentaire « sert aux retraites »,
- * n'était appelée nulle part : la longévité ne dépendait que de l'âge.
+ * n'était appelée nulle part : la longévité ne dépendait que de l'âge. Elle
+ * produit désormais 33 retraites « charge accumulée » sur 1400 carrières
+ * (2,4 %), réparties en grinder ×22, reckless ×10, random ×1 — et aucune sur les
+ * politiques prudentes.
  */
 
 import test from 'node:test';
