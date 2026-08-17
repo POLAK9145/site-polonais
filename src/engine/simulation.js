@@ -597,13 +597,20 @@ function maybeRetire(session, person, report) {
       // longévité ne dépendait que de l'âge — 14 carrières prudentes sur 14
       // s'arrêtaient au plafond de 34 ans.
       //
-      // Ce n'est jamais automatique. La probabilité reste faible et croît avec
-      // la pression : un joueur surchargé a d'abord toutes les occasions de
-      // ralentir, de récupérer ou de changer de routine. Arrêter est la
-      // dernière issue, pas la première.
+      // Ce n'est jamais automatique. Arrêter est la dernière issue, pas la
+      // première : un joueur surchargé a d'abord toutes les occasions de
+      // ralentir, de récupérer ou de changer de routine.
+      //
+      // ATTENTION : ce test est évalué **chaque semaine**. Une première version
+      // plafonnait la probabilité à 3 %, écrite en pensant à un ordre de
+      // grandeur annuel — or 3 % par semaine valent 79,5 % par an. Mesuré, les
+      // carrières s'arrêtaient si tôt que certaines graines ne vivaient plus que
+      // six ou sept types d'événements sur huit ans. Les valeurs ci-dessous sont
+      // donc exprimées pour ce qu'elles sont : au maximum 0,25 % par semaine,
+      // soit environ 12 % par an à pression maximale.
       const pressure = burnoutPressure(person);
       if (a >= 23 && pressure > 1.1) {
-        const chance = clamp((pressure - 1.1) * 0.012, 0, 0.03);
+        const chance = clamp((pressure - 1.1) * 0.0012, 0, 0.0025);
         if (rng.chance(chance)) inevitable = 'charge accumulée';
       }
     }
