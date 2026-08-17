@@ -371,20 +371,44 @@ export function relieveLoad(person, amount, { week = 0, reason = 'repos' } = {})
 }
 
 /**
- * Récompense immédiate du travail fourni cette semaine.
+ * Volume hebdomadaire de la routine par défaut — celle d'une session neuve,
+ * `['mechanics', 'strategy', 'review', 'rest']`. Sert de référence à
+ * `effortBonus` : un joueur qui ne touche pas à sa routine n'est ni récompensé
+ * ni pénalisé, et l'écart mesuré vient bien de son choix.
+ */
+const REFERENCE_VOLUME = 6.9;
+
+/**
+ * Récompense immédiate du travail fourni cette semaine — **relative**.
  *
  * C'est le premier des deux termes qui remplacent le malus plat. Il ne dépend
  * que de l'effort de la semaine : travailler beaucoup paie **tout de suite**,
  * quel que soit l'état de charge.
  *
- * Une première version faisait dépendre la récompense de la charge elle-même —
- * une cloche culminant à charge moyenne. C'était une erreur de conception : il
- * fallait être déjà usé pour progresser vite, et mesuré, aucune politique
- * n'atteignait jamais la moitié montante de la courbe. La récompense doit venir
- * de ce qu'on fait, le coût de ce qu'on accumule.
+ * Deux erreurs de conception successives, toutes deux corrigées ici :
+ *
+ *  1. Une première version faisait dépendre la récompense de la charge
+ *     elle-même — une cloche culminant à charge moyenne. Il fallait donc être
+ *     déjà usé pour progresser vite, et mesuré, aucune politique n'atteignait
+ *     la moitié montante de la courbe. La récompense doit venir de ce qu'on
+ *     fait, le coût de ce qu'on accumule.
+ *
+ *  2. La deuxième version, `1 + volume/11 × 0,46`, ne descendait jamais sous 1.
+ *     Comparé au code d'étape 6, l'effet réel n'était pas un arbitrage mais une
+ *     prime générale : le malus qu'elle remplaçait (`1 - max(0, fatigue-55)/75`)
+ *     valait exactement 1 pour six politiques d'audit sur neuf et ne mordait que
+ *     sur le grinder et le saboteur, tandis que la prime valait en moyenne
+ *     ×1,298 pour tout le monde. Retirer un malus payé par deux et distribuer un
+ *     bonus à neuf gonflait le pic médian de 54,3 à 64,7 (+19 %) et faisait
+ *     gagner la routine prudente à tous les horizons — l'inverse de l'arbitrage
+ *     recherché.
+ *
+ * D'où la forme actuelle : centrée sur `REFERENCE_VOLUME`, donc en dessous de 1
+ * pour une routine légère et au-dessus pour une routine lourde. Moyennée sur les
+ * neuf politiques d'audit, elle vaut ×1,01 — elle redistribue au lieu d'ajouter.
  */
-export function effortBonus(rawFatigue = 0) {
-  return 1 + clamp(rawFatigue / 11, 0, 1) * 0.46;
+export function effortBonus(volume = REFERENCE_VOLUME) {
+  return clamp(1 + (volume - REFERENCE_VOLUME) * 0.05, 0.86, 1.26);
 }
 
 /**
@@ -406,9 +430,22 @@ export function loadProgressionFactor(person) {
   // saisons : mesuré, le grinder était derrière la routine prudente aux années
   // 2, 3 et 5, et son pic moyen tombait de 61,3 à 54,9. Plus de risque pour
   // moins de récompense — l'inverse de l'arbitrage recherché.
+  //
+  // La pente est **convexe**, et non linéaire, pour une raison mesurée. Avec une
+  // pente linéaire, la charge du grinder s'équilibrait vers 70 dès la première
+  // saison — soit un facteur de 0,82 en permanence. Relevé semaine par semaine :
+  //
+  //     grinder  : facteur moyen 0,726 | 74 % des semaines sous 0,99 | 32 % sous 0,60
+  //     prudent  : facteur moyen 1,000 |  0 % des semaines sous 0,99
+  //
+  // Le produit effort × charge valait alors 0,761 pour le grinder contre 0,920
+  // pour le prudent : le grind coûtait plus qu'il ne rapportait **à tous les
+  // horizons**, faute de phase où il rapporte encore. Le coût marginal de la
+  // surcharge doit s'accélérer, pas frapper d'emblée à pleine force : être
+  // simplement fatigué coûte peu, être détruit coûte cher.
   const v = load.value;
   if (v <= 58) return 1;
-  return clamp(1 - ((v - 58) / 42) * 0.62, 0.38, 1);
+  return clamp(1 - ((v - 58) / 42) ** 1.6 * 0.62, 0.38, 1);
 }
 
 /**

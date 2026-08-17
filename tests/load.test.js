@@ -171,11 +171,33 @@ test('5 — pousser paie immédiatement, indépendamment de la charge', () => {
   const heavy = rawWeeklyVolume(['mechanics', 'mechanics', 'strategy', 'review']);
   assert.ok(heavy > light, `volume : intensif ${heavy} contre prudent ${light}`);
   assert.ok(effortBonus(heavy) > effortBonus(light) * 1.1, 'travailler plus ne rapporte pas davantage');
-  // Et le bonus ne dépend pas de la charge du personnage.
+
+  // La récompense doit **redistribuer**, pas s'ajouter. Une version antérieure
+  // valait `1 + volume/11 × 0,46`, donc toujours ≥ 1 : comparée au code d'étape
+  // 6, elle retirait un malus que deux politiques sur neuf payaient et versait
+  // une prime aux neuf, gonflant le pic médian de 54,3 à 64,7. Cette assertion
+  // existait sous une forme tautologique (`effortBonus(heavy) === effortBonus(heavy)`)
+  // et n'avait donc rien détecté.
+  assert.ok(effortBonus(light) < 1, `une routine légère est récompensée (×${effortBonus(light).toFixed(3)})`);
+  assert.ok(effortBonus(heavy) > 1, `une routine lourde n’est pas récompensée (×${effortBonus(heavy).toFixed(3)})`);
+  const routines = [
+    ['mechanics', 'strategy', 'review', 'rest'], // routine par défaut
+    ['mechanics', 'mechanics', 'strategy', 'review'], // grinder
+    ['mechanics', 'strategy', 'rest', 'social'], // prudent
+    ['mechanics', 'strategy', 'review', 'social'],
+    ['scrim', 'review', 'rest', 'social'],
+  ];
+  const moyenne =
+    routines.reduce((s, r) => s + effortBonus(rawWeeklyVolume(r)), 0) / routines.length;
+  assert.ok(
+    Math.abs(moyenne - 1) < 0.06,
+    `moyenne du bonus d’effort ×${moyenne.toFixed(3)} : c’est une prime générale, pas un arbitrage`,
+  );
+
+  // Et le coût, lui, ne dépend pas de la routine mais de ce qui s'est accumulé.
   const fresh = bareSubject();
   const worn = bareSubject();
   worn.load.value = 85;
-  assert.equal(effortBonus(heavy), effortBonus(heavy), 'le bonus d’effort dépend d’autre chose que de l’effort');
   assert.ok(loadProgressionFactor(worn) < loadProgressionFactor(fresh), 'la charge accumulée ne coûte rien');
 });
 
