@@ -532,8 +532,21 @@ test('l’anti-répétition évite d’enchaîner deux fois le même événement
   }
 
   // Et une vraie diversité thématique.
+  //
+  // Le nombre absolu de types n'est pas la bonne grandeur : il dépend de la
+  // durée de la carrière. Mesuré sur huit graines, une carrière courte sans
+  // club ne vit que 17 événements (6 types) là où une carrière de huit ans en
+  // vit 63 (21 types) — mais le **ratio** est remarquablement stable :
+  // 0,35 · 0,33 · 0,37. C'est lui l'invariant. Un seuil absolu faisait échouer
+  // les graines où le joueur ne trouve jamais d'équipe, alors que la variété y
+  // est proportionnellement identique.
   const unique = new Set(fired.map((f) => f.id));
-  assert.ok(unique.size >= 8, `la variété doit être réelle (${unique.size} types)`);
+  const ratio = unique.size / fired.length;
+  assert.ok(unique.size >= 5, `variété trop faible dans l’absolu (${unique.size} types)`);
+  assert.ok(
+    ratio > 0.22,
+    `un même événement se répète trop : ${unique.size} types pour ${fired.length} événements (ratio ${ratio.toFixed(2)})`,
+  );
 });
 
 test('les conséquences différées s’appliquent plus tard, jamais immédiatement', () => {
