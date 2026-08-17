@@ -111,9 +111,30 @@ test('2 — toutes les équipes ne sont pas obligées d’en avoir', () => {
     last.shareWithBench < 0.6,
     `${Math.round(last.shareWithBench * 100)} % des équipes ont un banc : il devient obligatoire`,
   );
-  // Et le bas de la pyramide n'en a pas du tout : c'est une couche supérieure.
+  // Et le banc reste une couche supérieure de la pyramide : le bas n'en porte
+  // qu'exceptionnellement.
+  //
+  // Ce test exigeait exactement zéro remplaçant au tier 1. C'est trop rigide :
+  // une équipe reléguée ne dissout pas son effectif du jour au lendemain, et un
+  // jeu solo dont l'effectif vaut 1 place mécaniquement sur le banc tout joueur
+  // supplémentaire. Mesuré à l'étape 7B, quand le changement de progression a
+  // déplacé les niveaux relatifs : 1 banc sur 43 équipes au tier 1 (2 %) contre
+  // 7 sur 27 au tier 4 (26 %). La propriété tient — c'est l'égalité stricte qui
+  // ne la mesurait pas.
   const tier1 = last.perTier['1'];
-  if (tier1) assert.equal(tier1.subs, 0, 'les structures d’entrée ne portent pas de banc');
+  const upper = last.perTier['4'] ?? last.perTier['3'];
+  if (tier1) {
+    assert.ok(
+      tier1.shareWithBench < 0.1,
+      `${Math.round(tier1.shareWithBench * 100)} % des structures d’entrée portent un banc`,
+    );
+    if (upper) {
+      assert.ok(
+        upper.shareWithBench > tier1.shareWithBench * 3,
+        `le banc n’est plus une couche supérieure : tier 1 ${tier1.shareWithBench} contre haut de pyramide ${upper.shareWithBench}`,
+      );
+    }
+  }
 });
 
 test('3 — un remplaçant possède un contrat cohérent', () => {
