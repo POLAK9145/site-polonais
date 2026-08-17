@@ -405,22 +405,23 @@ export function loadProgressionFactor(person) {
 }
 
 /**
- * Ce que la charge impose aux trois autres variables.
+ * Ce que la charge impose au moral.
  *
- * Sans ce couplage, « fatigue 98 + stress 2 + moral 98 » est un état stable —
- * il l'était, et le saboteur y a passé dix-huit ans.
+ * La fatigue et le stress, eux, ne passent plus par un terme de couplage : ils
+ * **dérivent** de la charge (voir `applyConditionEffects`). Un terme additif
+ * ajouté à des dynamiques par ailleurs indépendantes ne suffisait pas — chaque
+ * variable convergeait vers son propre point fixe, et « épuisé mais serein »
+ * restait atteignable.
+ *
+ * Le moral garde une dynamique propre parce qu'il dépend aussi des résultats,
+ * des relations et des événements : la charge l'érode, elle ne le détermine pas.
  */
 export function loadCoupling(person) {
   const load = person.load;
-  if (!load) return { fatigue: 0, stress: 0, morale: 0 };
-  // Rien en dessous de « sous pression » : la charge ordinaire ne pèse pas.
-  const p = clamp((load.value - 40) / 60, 0, 1);
+  if (!load) return { morale: 0 };
+  const p = clamp((load.value - 32) / 68, 0, 1);
   const chronic = clamp(load.weeksInState / 30, 0, 1) * (isHigh(load.state) ? 1 : 0);
-  return {
-    fatigue: p * 3.4 + chronic * 1.2,
-    stress: p * 3.1 + chronic * 1.6,
-    morale: -(p * 1.9 + chronic * 1.5),
-  };
+  return { morale: -(p * 2.1 + chronic * 1.5) };
 }
 
 /** Photographie de charge, pour l'audit. */

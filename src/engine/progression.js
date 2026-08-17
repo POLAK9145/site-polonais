@@ -245,16 +245,45 @@ function applyConditionEffects(person, routine, weeks, ctx, rng) {
     },
     weeks,
   );
-  // Le couplage : une charge haute et durable pousse la fatigue et le stress et
-  // érode le moral. Sans lui, « épuisé mais serein » est un état stable — il
-  // l'était, et la politique saboteur y tenait dix-huit ans.
-  const coupled = loadCoupling(person);
-  fatigue += coupled.fatigue;
-  stress += coupled.stress;
-  morale += coupled.morale;
+  // Fatigue et stress ne sont plus des compteurs indépendants : ce sont les
+  // expressions à court terme de la charge.
+  //
+  // C'est la seule façon d'interdire réellement « fatigue 98 + stress 2 +
+  // moral 98 ». Un simple terme de couplage ajouté à des dynamiques par ailleurs
+  // indépendantes ne suffit pas : mesuré après la première tentative, la
+  // politique saboteur restait à 98,2 de fatigue pour 3,6 de stress, parce que
+  // chaque variable avait son propre delta constant et convergeait vers son
+  // propre point fixe, sans rapport avec les deux autres. Une charge de 40,7
+  // cohabitait avec une fatigue de 98 — deux mesures du même épuisement qui se
+  // contredisaient.
+  //
+  // Les deux variables tendent donc désormais vers une cible dérivée de la
+  // charge, plus la part aiguë de la semaine. Elles gardent leur inertie propre
+  // (un retour progressif, pas un saut), mais elles ne peuvent plus divorcer.
+  const load = person.load;
+  const acute = rawFatigue * 2.0 + (ctx.matchLoad ?? 0) * 5;
+  const relief = Math.max(0, -fatigue) * 1.6;
+  const fatigueTarget = clamp(load.value * 0.8 + acute - relief, 0, 100);
+  person.fatigue = clamp(
+    person.fatigue + (fatigueTarget - person.fatigue) * clamp(0.3 * weeks, 0, 1) * m.burnoutRisk,
+    0,
+    100,
+  );
 
-  person.fatigue = clamp(person.fatigue + fatigue * m.burnoutRisk * weeks, 0, 100);
-  person.stress = clamp(person.stress + stress * m.burnoutRisk * weeks, 0, 100);
+  const stressTarget = clamp(
+    load.value * 0.72 + (ctx.pressure ?? 0) * 4.5 + Math.max(0, stress) * 2.2,
+    0,
+    100,
+  );
+  person.stress = clamp(
+    person.stress + (stressTarget - person.stress) * clamp(0.26 * weeks, 0, 1) * m.burnoutRisk,
+    0,
+    100,
+  );
+
+  // Le moral, lui, garde sa dynamique propre — il dépend aussi des résultats et
+  // des événements — mais la charge chronique l'érode.
+  morale += loadCoupling(person).morale;
   // Retour lent vers un niveau neutre : une mauvaise passe fait chuter le
   // moral, mais un joueur ne reste pas à zéro indéfiniment — sinon toutes
   // les carrières finissent identiquement par l'abandon.
