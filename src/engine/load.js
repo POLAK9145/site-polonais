@@ -384,7 +384,7 @@ export function relieveLoad(person, amount, { week = 0, reason = 'repos' } = {})
  * de ce qu'on fait, le coût de ce qu'on accumule.
  */
 export function effortBonus(rawFatigue = 0) {
-  return 1 + clamp(rawFatigue / 11, 0, 1) * 0.32;
+  return 1 + clamp(rawFatigue / 11, 0, 1) * 0.46;
 }
 
 /**
@@ -399,9 +399,16 @@ export function loadProgressionFactor(person) {
   if (!load) return 1;
   if (load.state === LOAD_STATES.BURNOUT) return 0.35;
   if (load.state === LOAD_STATES.RECOVERING) return 0.82;
+  // La note ne tombe qu'à partir de « surmené ». En dessous, accumuler ne coûte
+  // rien : c'est ce qui laisse au grind le temps de rapporter avant de payer.
+  //
+  // Un seuil à 46 faisait payer dès « sous pression », donc dès les premières
+  // saisons : mesuré, le grinder était derrière la routine prudente aux années
+  // 2, 3 et 5, et son pic moyen tombait de 61,3 à 54,9. Plus de risque pour
+  // moins de récompense — l'inverse de l'arbitrage recherché.
   const v = load.value;
-  if (v <= 46) return 1;
-  return clamp(1 - ((v - 46) / 54) * 0.72, 0.28, 1);
+  if (v <= 58) return 1;
+  return clamp(1 - ((v - 58) / 42) * 0.62, 0.38, 1);
 }
 
 /**
