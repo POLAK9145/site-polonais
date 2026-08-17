@@ -218,6 +218,29 @@ function takeReadyChain(ctx, week) {
       continue;
     }
     state.pendingChains.splice(i, 1);
+    // Une suite de chaîne est un événement comme un autre : elle doit être
+    // traçable. `takeReadyChain` retournait avant le bloc de traçage de
+    // `pickEvent`, si bien que les douze événements de chaîne du catalogue
+    // n'apparaissaient jamais dans la trace — mesuré, `locker_room_split` se
+    // déclenchait 1 679 fois sur 1 400 carrières en restant invisible. On ne
+    // pouvait donc pas répondre à « pourquoi cet événement s'est-il produit ? »
+    // pour la moitié narrative du catalogue (§12).
+    if (isTracing()) {
+      trace(TRACE.EVENT_FIRED, week, {
+        eventId: def.id,
+        tags: def.tags,
+        source: 'chaîne',
+        // Pourquoi maintenant : la chaîne avait été programmée, et pour quand.
+        queuedAt: pending.dueWeek - (pending.delay ?? 0),
+        dueWeek: pending.dueWeek,
+        lateBy: week - pending.dueWeek,
+        expiresWeek: pending.expiresWeek ?? null,
+        chainData: pending.data ?? null,
+        eligible: 1,
+        weight: null,
+        share: 1,
+      });
+    }
     return def;
   }
   ctx.chainData = null;
@@ -350,6 +373,9 @@ export function queueChain(ctx, eventId, { delay = 4, expires = 60, data = null 
     eventId,
     dueWeek: ctx.world.week + delay,
     expiresWeek: ctx.world.week + delay + expires,
+    // Conservé pour la trace : permet de dire quand la suite avait été
+    // programmée, et donc pourquoi elle arrive maintenant.
+    delay,
     data,
   });
 }

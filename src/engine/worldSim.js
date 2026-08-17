@@ -33,6 +33,7 @@ import { formAmateurTeams, dissolveFailedAmateurTeams } from './amateur.js';
 import { bestSubFor, playingTimeFactor, runRotation } from './roster.js';
 import { operatingCost, payroll, updateOrgIncome, reinvest, sceneTeamCapacity } from './economy.js';
 import { runVisibilityCycle, decayOrgReputation } from './reputation.js';
+import { contextPressure } from './load.js';
 import { isTracing, trace, TRACE } from './trace.js';
 import { runContractCycle, runReleases } from './contracts.js';
 import { runFreeAgentMarket, tickIdleWeeks } from './npcMarket.js';
@@ -70,6 +71,9 @@ export function simulateNpcs(world, rng) {
         // Un remplaçant s'entraîne autant mais ne joue pas : il progresse plus
         // lentement, sans être condamné à stagner (§J).
         playingTime: playingTimeFactor(world, p),
+        // Même modèle de charge que pour le joueur : un seul chemin de code,
+        // sinon les PNJ vivraient sous une autre physique (étape 7B).
+        pressure: contextPressure(world, p, { team, org: team ? world.orgs[team.orgId] : null }),
       },
       rng,
     );

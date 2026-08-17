@@ -17,6 +17,7 @@ import { ATTRIBUTE_GROUPS, GROUP_IDS, attrsOfGroup } from './attributes.js';
 import { ACTIVITIES_BY_ID, SLOTS_PER_WEEK } from '../data/training.js';
 import { mods, age as personAge, getFamiliarity, setFamiliarity, STATUS } from './person.js';
 import { WEEKS_PER_YEAR } from './time.js';
+import { updateLoad, loadCoupling, loadProgressionFactor } from './load.js';
 
 /**
  * Rythme de base. Calibré pour qu'un joueur de 17 ans au talent moyen qui
@@ -100,11 +101,15 @@ export function progressPerson(person, ctx, rng) {
   const m = mods(person);
   const { weights } = routineWeights(routine);
 
-  // Un joueur épuisé apprend beaucoup moins (§22). Les planchers comptent :
-  // trop bas, ils se multipliaient jusqu'à diviser la progression par dix, et
-  // s'entraîner dur devenait strictement perdant — l'inverse de l'arbitrage
-  // recherché au §78. Le surmenage doit coûter cher, pas annuler le travail.
-  const fatigueFactor = clamp(1 - Math.max(0, person.fatigue - 55) / 75, 0.45, 1);
+  // Charge : une cloche, pas une pente (étape 7B). Pousser paie à court terme,
+  // et ce sont les états hauts qui coûtent.
+  //
+  // Remplace `fatigueFactor = clamp(1 - max(0, fatigue-55)/75, 0.45, 1)`, un
+  // malus plat qui faisait du travail intensif un coût certain sans
+  // contrepartie : mesuré, la politique grinder subissait ×0,643 en continu et
+  // la politique saboteur ×0,472, sans jamais rien gagner en échange. Le risque
+  // vit désormais dans `crashRisk`, pas dans un multiplicateur permanent.
+  const loadFactor = loadProgressionFactor(person);
   const stressFactor = clamp(1 - Math.max(0, person.stress - 60) / 90, 0.6, 1);
   const moraleFactor = clamp(0.75 + person.morale / 250, 0.7, 1.15);
   const coachFactor = (1 + coachQuality * 0.45 + teamQuality * 0.12) * clamp(playingTime, 0.5, 1);
@@ -135,7 +140,7 @@ export function progressPerson(person, ctx, rng) {
           person.hidden.growth *
           m.growth *
           coachFactor *
-          fatigueFactor *
+          loadFactor *
           stressFactor *
           moraleFactor *
           weeks;
@@ -174,12 +179,17 @@ function applyConditionEffects(person, routine, weeks, ctx, rng) {
   let fatigue = 0;
   let stress = 0;
   let morale = 0;
+  let rawFatigue = 0;
   for (const id of routine) {
     const act = ACTIVITIES_BY_ID[id];
     if (!act) continue;
     fatigue += act.fatigue ?? 0;
     stress += act.stress ?? 0;
     morale += act.morale ?? 0;
+    // Volume brut : ce que la semaine a demandé, avant récupération. C'est la
+    // mesure d'intensité que consomme la charge — un `rest` ne doit pas
+    // « annuler » l'intensité de la semaine, seulement aider à la digérer.
+    if ((act.fatigue ?? 0) > 0) rawFatigue += act.fatigue;
   }
   // Les matchs coûtent, surtout en LAN.
   fatigue += (ctx.matchLoad ?? 0) * 1.8;
@@ -191,6 +201,31 @@ function applyConditionEffects(person, routine, weeks, ctx, rng) {
   const recovery = 1.6 + (1 - person.hidden.burnoutFloor) * 1.0;
   fatigue -= recovery;
   stress -= 1.6;
+
+  // --- Charge accumulée (étape 7B) -----------------------------------------
+  // Elle se met à jour AVANT le couplage : la charge de cette semaine pèse sur
+  // la fatigue, le stress et le moral de cette semaine.
+  const restSlots = routine.filter((id) => (ACTIVITIES_BY_ID[id]?.fatigue ?? 0) < 0).length;
+  updateLoad(
+    person,
+    {
+      rawFatigue,
+      matchLoad: ctx.matchLoad ?? 0,
+      pressure: ctx.pressure ?? 0,
+      sensitivity: m.burnoutRisk,
+      // Se reposer accélère la digestion de la charge, sans effacer l'intensité.
+      restBonus: 1 + restSlots * 0.45,
+      week: ctx.absWeek ?? 0,
+    },
+    weeks,
+  );
+  // Le couplage : une charge haute et durable pousse la fatigue et le stress et
+  // érode le moral. Sans lui, « épuisé mais serein » est un état stable — il
+  // l'était, et la politique saboteur y tenait dix-huit ans.
+  const coupled = loadCoupling(person);
+  fatigue += coupled.fatigue;
+  stress += coupled.stress;
+  morale += coupled.morale;
 
   person.fatigue = clamp(person.fatigue + fatigue * m.burnoutRisk * weeks, 0, 100);
   person.stress = clamp(person.stress + stress * m.burnoutRisk * weeks, 0, 100);
@@ -279,12 +314,23 @@ export function npcRoutine(person, rng) {
   return routine;
 }
 
-/** Un joueur peut-il encore encaisser le rythme ? Sert aux retraites (§48). */
+/**
+ * Un joueur peut-il encore encaisser le rythme ? Sert aux retraites (§48).
+ *
+ * Cette fonction existait, portait déjà ce commentaire, et **n'était appelée
+ * nulle part** : la longévité ne dépendait que de l'âge. Elle est désormais
+ * consultée par `maybeRetire`, et intègre la charge accumulée et les épisodes
+ * de rupture déjà traversés — deux grandeurs qui n'existaient pas.
+ */
 export function burnoutPressure(person) {
+  const load = person.load;
+  const accumulated = load ? (load.value - 55) / 45 : 0;
+  // Chaque rupture laisse une marque : la troisième pèse plus que la première.
+  const scars = load ? clamp((load.episodes ?? 0) * 0.22, 0, 0.9) : 0;
   return clamp(
-    (person.fatigue - 55) / 45 + (person.stress - 60) / 45,
+    (person.fatigue - 55) / 45 + (person.stress - 60) / 45 + Math.max(0, accumulated) + scars,
     0,
-    2,
+    3,
   );
 }
 

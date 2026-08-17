@@ -20,6 +20,7 @@ import { TRAITS, traitsCompatible, traitMods } from '../data/traits.js';
 import { generatePersonName, generateNickname } from './names.js';
 import { REGIONS_BY_ID } from '../data/regions.js';
 import { ageAt, WEEKS_PER_YEAR } from './time.js';
+import { createLoadState } from './load.js';
 
 export const STATUS = {
   AMATEUR: 'amateur',
@@ -139,6 +140,10 @@ export function createPerson(rng, opts = {}) {
       toxicity: 0,
     },
     followers: 0,
+
+    // Charge accumulée (étape 7B). Distincte de la fatigue instantanée : c'est
+    // elle qui garde la mémoire des semaines chargées et porte les sept états.
+    load: createLoadState(),
 
     // Historique agrégé. Alimenté par le moteur, jamais réécrit.
     stats: {

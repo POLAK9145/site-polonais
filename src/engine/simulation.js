@@ -20,7 +20,7 @@ import {
 } from './person.js';
 import { createOrg, createTeam } from './org.js';
 import { addToRoster, removeFromRoster, computeSynergyTarget, detachFromAllTeams, recordStint } from './team.js';
-import { progressPerson, updateForm } from './progression.js';
+import { progressPerson, updateForm, burnoutPressure } from './progression.js';
 import { decayMetaShock } from './meta.js';
 import { onWeekStart, onWeekEnd, runWeek as runSeasonWeek, ensureSeasonState } from './season.js';
 import {
@@ -53,6 +53,7 @@ import {
   runScheduledEffects,
   restorePicks,
   getEvent,
+  queueChain,
 } from './events/engine.js';
 import { initEvents } from './events/index.js';
 import { matchHighlights } from './match.js';
@@ -60,6 +61,8 @@ import { weekOfYear, yearOf, isTransferWindow, WEEKS_PER_YEAR } from './time.js'
 import { validateWorld, validateCareer } from './validator.js';
 import { checkAchievements, trackLowPoint } from './achievements.js';
 import { gainFollowers } from './reputation.js';
+import { contextPressure, crashRisk, LOAD_STATES } from './load.js';
+import { isTracing, trace, TRACE } from './trace.js';
 
 /** Crée une session complète : monde généré + carrière du joueur. */
 export function createSession(config) {
@@ -284,7 +287,13 @@ export function advanceWeek(session) {
     return report;
   }
 
-  // 10. Événement de la semaine.
+  // 10. Rupture spontanée : un joueur qui accumule sans jamais lever le pied
+  //      peut craquer sans avoir choisi « tenir encore un peu ». Sans ce
+  //      chemin, la rupture n'était accessible qu'à celui qui l'avait
+  //      explicitement acceptée — mesuré, la chaîne ne partait jamais autrement.
+  maybeSpontaneousCrash(session, report);
+
+  // 11. Événement de la semaine.
   maybeFireEvent(session, report);
 
   // 11. Succès.
@@ -374,6 +383,10 @@ function runPlayerWeek(session, person, report) {
       weeks: 1,
       absWeek: world.week,
       matchLoad,
+      // Pression du contexte : c'est elle qui fait dépendre la charge de la
+      // situation réelle du joueur — niveau de la structure, statut de
+      // titulaire, attentes, résultats récents — et non de sa seule routine.
+      pressure: contextPressure(world, person, { team, org: team ? world.orgs[team.orgId] : null, career }),
       learningGameId: career.learningGameId,
       learningGame,
     },
@@ -578,6 +591,21 @@ function maybeRetire(session, person, report) {
     // resserrement, tout le monde arrêtait mécaniquement à 27 ans.
     else if (a >= 28 && person.morale < 8 && person.stats.titles === 0 && rng.chance(0.04)) {
       inevitable = 'usure';
+    } else {
+      // Charge accumulée (étape 7B). `burnoutPressure` existait déjà, portait le
+      // commentaire « sert aux retraites » et n'était appelée nulle part : la
+      // longévité ne dépendait que de l'âge — 14 carrières prudentes sur 14
+      // s'arrêtaient au plafond de 34 ans.
+      //
+      // Ce n'est jamais automatique. La probabilité reste faible et croît avec
+      // la pression : un joueur surchargé a d'abord toutes les occasions de
+      // ralentir, de récupérer ou de changer de routine. Arrêter est la
+      // dernière issue, pas la première.
+      const pressure = burnoutPressure(person);
+      if (a >= 23 && pressure > 1.1) {
+        const chance = clamp((pressure - 1.1) * 0.012, 0, 0.03);
+        if (rng.chance(chance)) inevitable = 'charge accumulée';
+      }
     }
     if (!inevitable) return false;
   }
@@ -609,6 +637,42 @@ export function retireCareer(session, reason) {
     aboutPersonId: person.id,
   });
   world.rngState = rng.state;
+}
+
+/**
+ * Rupture spontanée sous charge accumulée (étape 7B).
+ *
+ * `crashRisk` ne dépasse jamais 9 % par semaine et ne s'applique qu'aux états
+ * hauts : la rupture reste possible sans être obligatoire, ce qui est
+ * exactement la propriété demandée. La chaîne narrative existante prend le
+ * relais — on programme `burnout_crash`, on ne réécrit pas l'épisode ici.
+ */
+function maybeSpontaneousCrash(session, report) {
+  const { world, career, rng } = session;
+  const person = world.persons[career.personId];
+  const risk = crashRisk(person);
+  if (risk <= 0) return false;
+  // Une rupture déjà programmée ne se cumule pas avec une autre.
+  const pending = career.eventState.pendingChains.some(
+    (c) => c.eventId === 'burnout_crash' || c.eventId === 'burnout_recovery',
+  );
+  if (pending || person.load?.state === LOAD_STATES.BURNOUT) return false;
+  if (!rng.chance(risk)) return false;
+
+  const ctx = buildContext(session);
+  queueChain(ctx, 'burnout_crash', { delay: rng.int(1, 4), expires: 26 });
+  if (isTracing()) {
+    trace(TRACE.LOAD, world.week, {
+      decision: 'crash_queued',
+      personId: person.id,
+      state: person.load?.state,
+      load: Math.round(person.load?.value ?? 0),
+      heavyStreak: person.load?.heavyStreak ?? 0,
+      episodes: person.load?.episodes ?? 0,
+      risk: Math.round(risk * 1000) / 1000,
+    });
+  }
+  return true;
 }
 
 function maybeFireEvent(session, report) {

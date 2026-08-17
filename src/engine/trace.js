@@ -30,6 +30,7 @@ export const TRACE = {
   CONTRACT: 'contract',
   ECONOMY: 'economy',
   ROSTER: 'roster',
+  LOAD: 'load',
   NPC_CAREER: 'npc_career',
   META: 'meta',
   DEFERRED: 'deferred',

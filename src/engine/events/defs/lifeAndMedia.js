@@ -11,6 +11,7 @@ import { clamp } from '../../rng.js';
 import { SPONSOR_TYPES } from '../../../data/orgs.js';
 import { mods } from '../../person.js';
 import { FAMILY_BY_ID } from '../../../data/origins.js';
+import { isHigh, relieveLoad, crashRisk, markBurnout, LOAD_STATES } from '../../load.js';
 
 function family(ctx) {
   return FAMILY_BY_ID[ctx.career.familyId] ?? null;
@@ -22,8 +23,23 @@ export const lifeAndMediaEvents = [
     id: 'burnout_warning',
     tags: ['mental', 'santé'],
     cooldown: 40,
-    condition: (ctx) => ctx.person.fatigue > 68 || ctx.person.stress > 70,
-    weight: (ctx) => clamp((ctx.person.fatigue - 60) * 0.16 + (ctx.person.stress - 60) * 0.16, 0, 10),
+    // La charge accumulée, pas la fatigue de la semaine (étape 7B) : le seuil
+    // instantané se déclenchait pour un joueur qui vivait en permanence à 70 de
+    // fatigue — mesuré, 68,6 % des semaines d'un grinder — sans que la durée y
+    // change quoi que ce soit. Un avertissement doit dire « cela fait des
+    // semaines que ça dure », ce que seul l'état de charge sait.
+    condition: (ctx) => isHigh(ctx.person.load?.state) || ctx.person.stress > 72,
+    weight: (ctx) => {
+      const load = ctx.person.load;
+      if (!load) return 0;
+      // Plus la série de semaines chargées est longue, plus l'alerte est
+      // pressante — c'est la mémoire de charge qui parle.
+      return clamp(
+        (load.value - 55) * 0.1 + load.heavyStreak * 0.06 + (ctx.person.stress - 60) * 0.08,
+        0,
+        10,
+      );
+    },
     title: 'Les signaux',
     text: (ctx) =>
       `Vous n'arrivez plus à récupérer. Les sessions se ressemblent, vos mains sont lourdes, et vous relisez trois fois la même information sans la retenir. Vous connaissez ces signes. Vous les avez vus chez d'autres.`,
@@ -34,6 +50,9 @@ export const lifeAndMediaEvents = [
         hint: 'Vous perdrez du terrain à court terme',
         apply: (ctx) => {
           ctx.fx.fatigue(-30).stress(-22).morale(6).form(-2);
+          // Ralentir agit sur la charge elle-même, pas seulement sur la fatigue
+          // du moment : c'est ce qui permet de vraiment redescendre d'un état.
+          relieveLoad(ctx.person, 34, { week: ctx.world.week, reason: 'coup de frein volontaire' });
           ctx.fx.log('Coup de frein volontaire.', { kind: 'decision' });
           ctx.fx.attr('timeManagement', 1.5);
           return 'Vous coupez tout pendant une semaine. Le monde continue sans vous, et ce n’est pas si grave.';
@@ -42,11 +61,23 @@ export const lifeAndMediaEvents = [
       {
         id: 'push',
         label: 'Tenir encore un peu',
+        hint: 'Vous progressez, mais la charge continue de monter',
         risky: true,
         apply: (ctx) => {
           ctx.fx.fatigue(6).stress(6).group('mechanical', 0.5);
-          ctx.fx.chain('burnout_crash', { delay: ctx.rng.int(3, 10), expires: 26 });
-          return 'Vous serrez les dents. Il reste trois semaines avant les playoffs.';
+          // Pousser paie : un vrai gain immédiat, plus large que le demi-point
+          // précédent — c'est la contrepartie du risque assumé (§3).
+          ctx.fx.group('mental', 0.4);
+          // Et le risque est réel : la rupture n'est plus certaine, elle est
+          // probable en fonction de la charge accumulée. Un joueur solide qui
+          // pousse une fois peut s'en sortir ; celui qui pousse depuis des mois
+          // beaucoup moins.
+          const risk = clamp(0.25 + crashRisk(ctx.person) * 6, 0.2, 0.85);
+          if (ctx.rng.chance(risk)) {
+            ctx.fx.chain('burnout_crash', { delay: ctx.rng.int(3, 10), expires: 26 });
+            return 'Vous serrez les dents. Il reste trois semaines avant les playoffs.';
+          }
+          return 'Vous serrez les dents, et ça passe. Cette fois.';
         },
       },
       {
@@ -57,6 +88,7 @@ export const lifeAndMediaEvents = [
           const coach = ctx.world.persons[ctx.team.coachId];
           ctx.fx.relation(coach.id, 8, 'Vous avez parlé de votre état au staff.');
           ctx.fx.fatigue(-18).stress(-16).morale(3);
+          relieveLoad(ctx.person, 22, { week: ctx.world.week, reason: 'semaine allégée par le staff' });
           return 'Le staff allège votre semaine sans en faire un sujet. Personne d’autre n’est au courant.';
         },
       },
@@ -67,12 +99,17 @@ export const lifeAndMediaEvents = [
     id: 'burnout_crash',
     chainOnly: true,
     tags: ['mental', 'santé'],
-    condition: (ctx) => ctx.person.fatigue > 55,
+    // La rupture suppose une charge réelle, pas une fatigue de passage.
+    condition: (ctx) => (ctx.person.load?.value ?? 0) > 48 || ctx.person.fatigue > 55,
     title: 'La rupture',
     text: () =>
       `Ça lâche d'un coup. Plus d'envie, plus de concentration, plus rien. Vous restez devant l'écran sans lancer une partie.`,
     auto: (ctx) => {
       ctx.fx.fatigue(-10).stress(20).morale(-25).form(-9);
+      // L'épisode devient un état, et il laisse une marque : chaque rupture
+      // rend la suivante plus probable (`crashRisk`) et pèse sur la longévité
+      // (`burnoutPressure`).
+      markBurnout(ctx.person, ctx.world.week);
       ctx.fx.log('Épisode de surmenage.', { kind: 'setback', important: true });
       ctx.fx.memory('crisis', 'La rupture', 'Le corps et la tête ont fini par dire non.');
       ctx.fx.synergy(-6);
@@ -94,6 +131,9 @@ export const lifeAndMediaEvents = [
         label: 'Reconstruire lentement',
         apply: (ctx) => {
           ctx.fx.fatigue(-40).stress(-30).morale(18).attr('resilience', 3).attr('timeManagement', 2);
+          // Accepter de ralentir vide réellement la charge : c'est ce qui rend
+          // le retour au haut niveau possible (§critère de validation).
+          relieveLoad(ctx.person, 62, { week: ctx.world.week, reason: 'reconstruction' });
           ctx.fx.later('resilience_dividend', 40, null);
           ctx.fx.memory('comeback', 'Reconstruction', 'Vous avez recommencé par le début, sans brûler d’étape.');
           return 'Vous reprenez à petites doses. C’est frustrant. C’est ce qu’il fallait.';
@@ -102,9 +142,14 @@ export const lifeAndMediaEvents = [
       {
         id: 'return_fast',
         label: 'Revenir tout de suite',
+        hint: 'Vous ne perdez pas votre place, mais rien n’est réglé',
         risky: true,
         apply: (ctx) => {
           ctx.fx.fatigue(-12).stress(-5).morale(5).form(-4);
+          // Revenir vite ne résout rien : la charge reste haute, donc l'état
+          // reste haut, donc la rechute guette. C'est le sens du §2 — « un
+          // joueur qui continue malgré les signaux ».
+          relieveLoad(ctx.person, 12, { week: ctx.world.week, reason: 'retour précipité' });
           if (ctx.rng.chance(0.45)) {
             ctx.fx.chain('burnout_crash', { delay: ctx.rng.int(10, 30), expires: 30 });
           }
@@ -116,6 +161,7 @@ export const lifeAndMediaEvents = [
         label: 'Prendre du recul sur la compétition',
         apply: (ctx) => {
           ctx.fx.fatigue(-45).stress(-35).morale(12).flag('considering_exit', true);
+          relieveLoad(ctx.person, 78, { week: ctx.world.week, reason: 'mise en retrait' });
           ctx.fx.log('Prise de recul sur la compétition.', { kind: 'decision', important: true });
           return 'Vous ne dites pas que vous arrêtez. Vous dites que vous verrez.';
         },
