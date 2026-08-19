@@ -374,37 +374,83 @@ export const lifeAndMediaEvents = [
     condition: (ctx) => ctx.person.reputation.public > 15 && (mods(ctx.person).conflictRisk > 1.2 || ctx.person.stress > 60),
     weight: (ctx) => clamp((mods(ctx.person).conflictRisk - 1) * 5 + (ctx.person.stress - 55) * 0.08, 0, 6),
     title: 'Une phrase de trop',
-    text: () =>
-      `Un message posté après une défaite est repris partout. Sorti du contexte, il est indéfendable. Dans le contexte, il n'est pas beaucoup mieux.`,
+    text: (ctx) => {
+      const s = ctx.situation;
+      const base = `Un message posté après une défaite est repris partout. Sorti du contexte, il est indéfendable. Dans le contexte, il n'est pas beaucoup mieux.`;
+      if (s.aBout) return `${base} Vous l’avez écrit à deux heures du matin, après une semaine que vous ne souhaitez à personne.`;
+      if (s.structureExigeante) return `${base} Votre organisation ne laissera pas passer.`;
+      return base;
+    },
     choices: [
       {
         id: 'apologize',
         label: 'S’excuser publiquement',
+        hint: 'Éteindre l’incendie, en y laissant quelque chose',
         apply: (ctx) => {
+          const s = ctx.situation;
           ctx.fx.rep('toxicity', 4).rep('public', -4).rep('pros', -1).stress(8);
           ctx.fx.log('Polémique publique, excuses présentées.', { kind: 'media', important: true });
           ctx.fx.news(`${ctx.person.nick} présente ses excuses`, 'La séquence laissera des traces.', { tone: 'negative' });
+          // Une structure exigeante attend précisément cela, et le crédite.
+          if (s.structureExigeante && ctx.team?.coachId) {
+            ctx.fx.relation(ctx.team.coachId, 4, 'Il a éteint la polémique proprement.');
+            return 'Vous publiez des excuses. La moitié des gens y croit. Votre organisation, elle, respire.';
+          }
           return 'Vous publiez des excuses. La moitié des gens y croit.';
+        },
+      },
+      {
+        id: 'explain',
+        label: 'Expliquer dans quel état vous étiez',
+        hint: 'Dire la fatigue, sans en faire une excuse',
+        // On ne peut invoquer l'épuisement que si l'on est effectivement épuisé.
+        // C'est la charge (7B) qui entre dans le récit public.
+        available: (ctx) => ctx.situation.aBout || ctx.situation.dejaRompu,
+        apply: (ctx) => {
+          const s = ctx.situation;
+          ctx.fx.rep('toxicity', 1).stress(-4);
+          ctx.fx.log('Polémique expliquée par l’épuisement.', { kind: 'media', important: true });
+          // Le public entend mieux quelqu'un qu'il connaît déjà, et surtout
+          // quelqu'un dont la rupture est déjà publique.
+          if (s.dejaRompu) {
+            ctx.fx.rep('public', 3).rep('community', 6).morale(4);
+            ctx.fx.news(`${ctx.person.nick} évoque son épuisement`, 'Le sujet dépasse la polémique initiale.', { tone: 'neutral' });
+            return 'Vous racontez les derniers mois. Le sujet change de nature : on ne parle plus de la phrase.';
+          }
+          ctx.fx.rep('public', -2).rep('community', 3).morale(1);
+          return 'Vous expliquez l’état dans lequel vous étiez. Certains y voient une excuse, d’autres vous croient.';
         },
       },
       {
         id: 'double_down',
         label: 'Assumer',
+        hint: (ctx) => selon(ctx.situation.structureExigeante, 'Votre organisation ne vous le pardonnera pas', 'Votre communauté suivra ; les managers noteront'),
         risky: true,
         apply: (ctx) => {
-          ctx.fx.rep('toxicity', 12).rep('public', 5).rep('pros', -8).rep('community', -6);
+          const s = ctx.situation;
+          ctx.fx.rep('toxicity', 12).rep('public', 5).rep('pros', s.structureExigeante ? -12 : -8).rep('community', -6);
           ctx.fx.followers(Math.round(Math.sqrt(ctx.person.followers) * 45));
           ctx.fx.log('Polémique assumée publiquement.', { kind: 'media', important: true });
           ctx.fx.memory('controversy', 'Le clash', 'Vous n’avez rien retiré. Ça vous a suivi longtemps.');
           ctx.fx.later('toxicity_consequence', ctx.rng.int(20, 50), null);
+          if (s.structureExigeante && ctx.team?.coachId) {
+            ctx.fx.relation(ctx.team.coachId, -10, 'Il a assumé publiquement, contre l’avis de la structure.', { important: true });
+          }
           return 'Vous n’enlevez rien. Votre communauté grossit. Les managers, eux, prennent note.';
         },
       },
       {
         id: 'silence',
         label: 'Ne rien dire',
+        hint: 'Attendre que ça meure',
         apply: (ctx) => {
+          const s = ctx.situation;
           ctx.fx.rep('toxicity', 2).rep('media', -3).stress(5);
+          // Se taire quand on est très visible ne suffit pas : le vide se remplit.
+          if (s.visibilite === VISIBILITE.VEDETTE) {
+            ctx.fx.rep('public', -3).stress(4);
+            return 'Vous laissez passer. À votre niveau de visibilité, le silence est lu comme un aveu, et ça dure trois semaines.';
+          }
           return 'Vous laissez passer. Ça meurt en huit jours.';
         },
       },
@@ -421,37 +467,62 @@ export const lifeAndMediaEvents = [
     title: 'Le compte est vide',
     text: (ctx) => {
       const f = family(ctx);
-      return f && f.stability < 0.4
+      const s = ctx.situation;
+      const base = f && f.stability < 0.4
         ? `Il ne reste presque rien. Personne ne peut vous avancer quoi que ce soit. Il faut trouver une solution ce mois-ci.`
         : `Vos réserves sont épuisées. Vous pouvez encore tenir, mais plus longtemps sur ce rythme.`;
+      // Être fauché et à bout en même temps, c'est une autre situation que d'être
+      // seulement fauché, et le joueur le sait mieux que personne.
+      if (s.aBout) return `${base} Vous n’avez ni argent ni énergie, et il va falloir choisir lequel des deux régler d’abord.`;
+      return base;
     },
     choices: [
       {
         id: 'job',
         label: 'Prendre un travail à côté',
-        hint: 'Moins de temps de jeu, mais une stabilité',
+        hint: (ctx) => selon(ctx.situation.aBout, 'Moins de jeu — et ce sera peut-être un soulagement', 'Moins de temps de jeu, mais une stabilité'),
         apply: (ctx) => {
+          const s = ctx.situation;
           ctx.fx.money(1800).flag('side_job', true);
-          ctx.fx.fatigue(12).stress(-6);
           ctx.fx.log('Emploi alimentaire pris en parallèle.', { kind: 'money', important: true });
           ctx.fx.later('side_job_income', 12, { amount: 1600 });
+          // Travailler à côté écrase le volume de jeu. Pour un joueur au bout,
+          // c'est mécaniquement une pause forcée — ce qui n'est pas rien.
+          if (s.aBout) {
+            relieveLoad(ctx.person, 20, { week: ctx.world.week, reason: 'emploi alimentaire' });
+            ctx.fx.fatigue(6).stress(-10).morale(2);
+            return 'Vous trouvez quelque chose. Vos semaines passent de 40 à 20 heures de jeu — et votre corps vous remercie autant que votre compte.';
+          }
+          ctx.fx.fatigue(12).stress(-6);
           return 'Vous trouvez quelque chose. Vos semaines passent de 40 à 20 heures de jeu.';
         },
       },
       {
         id: 'stream',
         label: 'Streamer intensivement',
+        hint: (ctx) => selon(ctx.situation.aBout, 'De l’argent, mais vous ajoutez des heures', 'Des revenus et de l’audience'),
+        // Streamer tous les soirs quand on est déjà en rupture n'est pas une
+        // option qu'un joueur envisagerait sérieusement.
+        available: (ctx) => !ctx.situation.enConvalescence,
         apply: (ctx) => {
+          const s = ctx.situation;
           const income = Math.round(200 + ctx.person.followers * 0.08 + ctx.person.attrs.entertainment * 6);
           ctx.fx.money(income).followers(Math.round(500 + Math.sqrt(ctx.person.followers) * 20));
-          ctx.fx.fatigue(10).group('media', 1.2);
+          ctx.fx.group('media', 1.2);
           ctx.fx.log(`Revenus de stream : ${income.toLocaleString('fr-FR')} €.`, { kind: 'money' });
+          // Ajouter des soirées de stream à un calendrier déjà plein se paie.
+          if (s.aBout) {
+            ctx.fx.fatigue(16).stress(8);
+            return `Vous streamez tous les soirs, par-dessus le reste. ${income.toLocaleString('fr-FR')} € rentrent. Vous ne savez plus quel jour on est.`;
+          }
+          ctx.fx.fatigue(10);
           return `Vous streamez tous les soirs. ${income.toLocaleString('fr-FR')} € rentrent. Ce n’est pas beaucoup, mais ça rentre.`;
         },
       },
       {
         id: 'borrow',
         label: 'Demander de l’aide',
+        hint: 'On vous dépannera. Il faudra le rendre, d’une façon ou d’une autre',
         available: (ctx) => (family(ctx)?.support ?? 0) > 0.35,
         apply: (ctx) => {
           const f = family(ctx);
@@ -519,36 +590,74 @@ export const lifeAndMediaEvents = [
     condition: (ctx) => ctx.person.followers > 40000 && ctx.person.reputation.public > 25,
     weight: (ctx) => clamp(ctx.person.followers / 90000, 0, 6) * (ctx.person.status === 'inactive' ? 2.5 : 1),
     title: 'L’autre carrière possible',
-    text: (ctx) =>
-      `Avec ${ctx.person.followers.toLocaleString('fr-FR')} abonnés, une plateforme vous propose un contrat de créateur. Le revenu est supérieur à ce que la compétition vous rapporte. Il faudrait y consacrer l'essentiel de votre temps.`,
+    text: (ctx) => {
+      const s = ctx.situation;
+      const base = `Avec ${ctx.person.followers.toLocaleString('fr-FR')} abonnés, une plateforme vous propose un contrat de créateur. Le revenu est supérieur à ce que la compétition vous rapporte. Il faudrait y consacrer l'essentiel de votre temps.`;
+      // La même proposition n'est pas la même porte selon où l'on se trouve.
+      if (s.aBout) return `${base} Une carrière sans classement, sans review, sans lundi matin. L’idée vous traverse plus longtemps que vous ne l’auriez cru.`;
+      if (s.surLeBanc) return `${base} De toute façon, vous ne jouez pas.`;
+      if (s.fauche) return `${base} C’est plus que vous n’avez gagné en deux ans.`;
+      return base;
+    },
     choices: [
       {
         id: 'pivot',
         label: 'Basculer vers la création de contenu',
+        hint: (ctx) => selon(ctx.situation.aBout, 'Sortir de la compétition, vraiment', 'Quitter la scène pour l’audience'),
         apply: (ctx) => {
+          const s = ctx.situation;
           const income = Math.round(ctx.person.followers * 0.6);
           ctx.fx.money(income).flag('content_career', true);
           ctx.career.routine = ['streaming', 'content', 'social', 'rest'];
           ctx.fx.log('Bascule vers une carrière de créateur.', { kind: 'career', important: true });
           ctx.fx.memory('pivot', 'Le virage', 'Vous avez choisi l’audience plutôt que la scène.');
           ctx.fx.later('content_growth', 26, null);
+          // Quitter la compétition allège réellement la charge : plus de scrims,
+          // plus d'enjeu hebdomadaire. C'est la sortie que le texte annonçait.
+          if (s.aBout) {
+            relieveLoad(ctx.person, 38, { week: ctx.world.week, reason: 'sortie de la compétition' });
+            ctx.fx.stress(-14).morale(8);
+            return `Vous signez. ${income.toLocaleString('fr-FR')} € d'avance, et pour la première fois depuis des mois, aucun match à préparer.`;
+          }
           return `Vous signez. ${income.toLocaleString('fr-FR')} € d'avance, et un rythme de publication à tenir.`;
         },
       },
       {
         id: 'hybrid',
         label: 'Faire les deux',
-        hint: 'Deux fois plus de fatigue',
+        hint: (ctx) => selon(ctx.situation.aBout, 'Vous n’y arriverez probablement pas', 'Deux fois plus de fatigue'),
+        // Mener les deux de front n'est pas une option crédible pour quelqu'un
+        // qui sort d'une rupture. Il le sait mieux que quiconque.
+        available: (ctx) => !ctx.situation.enConvalescence,
         apply: (ctx) => {
-          ctx.fx.money(Math.round(ctx.person.followers * 0.2)).fatigue(14).stress(8).flag('hybrid_career', true);
+          const s = ctx.situation;
+          ctx.fx.money(Math.round(ctx.person.followers * 0.2)).flag('hybrid_career', true);
+          // Le cumul est un vrai cumul : il s'ajoute à ce qui est déjà porté.
+          ctx.fx.fatigue(s.aBout ? 20 : 14).stress(s.aBout ? 14 : 8);
+          if (s.aBout) {
+            return 'Vous acceptez une version allégée du contrat. Vous savez déjà que vous ne tiendrez pas les deux.';
+          }
           return 'Vous acceptez une version allégée du contrat. Vos journées n’ont plus de trous.';
         },
       },
       {
         id: 'refuse',
         label: 'Rester sur la compétition',
+        hint: (ctx) => selon(ctx.situation.fauche, 'Refuser l’argent dont vous avez besoin', 'Vous n’êtes pas venu pour ça'),
         apply: (ctx) => {
-          ctx.fx.rep('pros', 4).morale(2).flag('pure_competitor', true);
+          const s = ctx.situation;
+          ctx.fx.rep('pros', 4).flag('pure_competitor', true);
+          // Refuser une porte de sortie quand on est au bout, c'est un choix qui
+          // engage — et qui pèse.
+          if (s.aBout) {
+            ctx.fx.morale(-3).stress(5);
+            return 'Vous refusez. Vous n’êtes pas venu pour ça. Vous raccrochez sans être sûr d’avoir eu raison.';
+          }
+          if (s.fauche) {
+            ctx.fx.morale(-2);
+            return 'Vous refusez. Vous n’êtes pas venu pour ça. Le virement n’arrivera pas.';
+          }
+          ctx.fx.morale(2);
           return 'Vous refusez. Vous n’êtes pas venu pour ça.';
         },
       },

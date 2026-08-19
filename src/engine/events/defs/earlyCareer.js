@@ -36,16 +36,26 @@ export const earlyCareerEvents = [
     condition: (ctx) => !ctx.hasTeam && ctx.career.counters.weeks < 20,
     weight: () => 8,
     title: 'Les premières heures',
-    text: (ctx) =>
-      `Vous enchaînez les parties sur ${ctx.game.name}. Personne ne vous regarde. Personne ne vous attend. C'est exactement le moment où tout se décide, et vous n'en savez rien encore.`,
+    text: (ctx) => {
+      const s = ctx.situation;
+      const base = `Vous enchaînez les parties sur ${ctx.game.name}. Personne ne vous regarde. Personne ne vous attend. C'est exactement le moment où tout se décide, et vous n'en savez rien encore.`;
+      // Un débutant fauché ne joue pas dans les mêmes conditions qu'un autre.
+      if (s.fauche) return `${base} Il faudra aussi payer le loyer, à un moment.`;
+      return base;
+    },
     choices: [
       {
         id: 'grind',
         label: 'Jouer sans compter les heures',
-        hint: 'Progression rapide, équilibre fragile',
+        hint: (ctx) => selon(ctx.situation.fauche, 'Progression rapide — et rien qui rentre', 'Progression rapide, équilibre fragile'),
         apply: (ctx) => {
-          ctx.fx.group('mechanical', 1.2).fatigue(10).stress(5).flag('grinder', true);
+          const s = ctx.situation;
+          ctx.fx.group('mechanical', 1.2).flag('grinder', true);
           ctx.fx.later('discipline_noticed', 40, { source: 'grind' });
+          // Enchaîner les nuits quand on n'a aucune stabilité derrière coûte
+          // davantage : ce n'est pas le même grind.
+          ctx.fx.fatigue(s.fauche ? 14 : 10).stress(s.fauche ? 9 : 5);
+          if (s.fauche) return 'Vous ne comptez plus. Certaines nuits se terminent quand le jour se lève, et vous ne savez pas comment vous finirez le mois.';
           return 'Vous ne comptez plus. Certaines nuits se terminent quand le jour se lève.';
         },
       },
@@ -56,6 +66,8 @@ export const earlyCareerEvents = [
         apply: (ctx) => {
           ctx.fx.group('professional', 1.6).group('gameSense', 0.6).flag('structured', true);
           ctx.fx.later('discipline_noticed', 60, { source: 'structure' });
+          // S'organiser protège : la charge monte moins vite.
+          ctx.fx.stress(-2);
           return 'Vous notez vos sessions, vos erreurs, vos objectifs. Personne ne le remarque. Pas encore.';
         },
       },
@@ -64,7 +76,10 @@ export const earlyCareerEvents = [
         label: 'Jouer avec la communauté',
         hint: 'Réseau et relations, moins de niveau brut',
         apply: (ctx) => {
-          ctx.fx.group('social', 1.4).rep('community', 4).morale(4).flag('networked', true);
+          const s = ctx.situation;
+          ctx.fx.group('social', 1.4).rep('community', 4).flag('networked', true);
+          // Se faire des amis quand on est isolé et sans le sou compte double.
+          ctx.fx.morale(s.fauche ? 7 : 4);
           return 'Vous vous faites un nom sur quelques serveurs. Des gens commencent à vous reconnaître.';
         },
       },

@@ -11,6 +11,8 @@ import { rosterPersons, teamNeeds, teamStrength } from '../../team.js';
 import { relationValue, REL_TAGS } from '../../relations.js';
 import { collectOffers } from '../../transfers.js';
 import { clamp } from '../../rng.js';
+import { selon, VISIBILITE, SAISON_DE_VIE } from '../situation.js';
+import { relieveLoad } from '../../load.js';
 
 function teammates(ctx) {
   if (!ctx.team) return [];
@@ -57,30 +59,60 @@ export const teamLifeEvents = [
       const mate = ctx.rng.pick(teammates(ctx));
       ctx.pickedMate = mate;
       if (!mate) return `Quelque chose fonctionne bien dans le groupe en ce moment.`;
-      return `Sur les dernières semaines, quelque chose fonctionne particulièrement bien entre ${mate.nick} et vous. Vous n'avez plus besoin de vous parler pour savoir ce que l'autre va faire.`;
+      const s = ctx.situation;
+      const base = `Sur les dernières semaines, quelque chose fonctionne particulièrement bien entre ${mate.nick} et vous. Vous n'avez plus besoin de vous parler pour savoir ce que l'autre va faire.`;
+      if (s.surLeBanc) return `${base} Vous vous entendez surtout à l’entraînement : en match, vous le regardez jouer.`;
+      return base;
     },
     choices: [
       {
         id: 'nurture',
         label: 'Travailler ce duo',
+        hint: (ctx) => selon(ctx.situation.aBout, 'Des heures en plus que vous n’avez pas', 'Des heures en plus, ensemble'),
         apply: (ctx) => {
           const mate = ctx.pickedMate ?? ctx.rng.pick(teammates(ctx));
           if (!mate) return 'Le moment passe.';
+          const s = ctx.situation;
           ctx.fx.relation(mate.id, 18, `Vous construisez un vrai duo avec ${mate.nick}.`, {
             tag: REL_TAGS.FRIEND,
             important: true,
           });
           ctx.fx.synergy(4).attr('teamwork', 1.5);
+          // Ces heures supplémentaires existent vraiment : elles s'ajoutent.
+          if (s.aBout) ctx.fx.fatigue(6).stress(4);
           ctx.fx.chain('duo_recognition', { delay: ctx.rng.int(10, 26), expires: 60, data: { mateId: mate.id } });
           return `Vous passez des heures supplémentaires à travailler ensemble.`;
         },
       },
       {
+        id: 'lean',
+        label: 'Vous appuyer sur lui',
+        hint: 'Lui dire ce que vous traversez',
+        // On ne se confie qu'en ayant quelque chose à confier.
+        available: (ctx) => ctx.situation.aBout || ctx.situation.enDifficulte || ctx.situation.fauche,
+        apply: (ctx) => {
+          const mate = ctx.pickedMate ?? ctx.rng.pick(teammates(ctx));
+          if (!mate) return 'Le moment passe.';
+          const s = ctx.situation;
+          ctx.fx.relation(mate.id, 12, `Vous vous êtes appuyé sur ${mate.nick} dans une mauvaise passe.`, {
+            tag: REL_TAGS.FRIEND,
+            important: true,
+          });
+          // Parler ne règle rien de matériel, mais allège réellement.
+          ctx.fx.stress(-9).morale(5);
+          if (s.aBout) relieveLoad(ctx.person, 10, { week: ctx.world.week, reason: 'soutien d’un coéquipier' });
+          return `Vous lui dites une partie de ce que vous n’avez dit à personne. Il n’a pas de solution. Ça aide quand même.`;
+        },
+      },
+      {
         id: 'neutral',
         label: 'Ne rien changer',
+        hint: 'Ce qui marche seul n’a pas besoin de vous',
         apply: (ctx) => {
           const mate = ctx.pickedMate ?? ctx.rng.pick(teammates(ctx));
           if (mate) ctx.fx.relation(mate.id, 5, `Bonne entente avec ${mate.nick}.`);
+          // Laisser filer une bonne entente quand on va mal, c'est rester seul.
+          if (ctx.situation.aBout || ctx.situation.enDifficulte) ctx.fx.morale(-2);
           return 'Ça marche tout seul. Vous n’y touchez pas.';
         },
       },
@@ -269,26 +301,71 @@ export const teamLifeEvents = [
     title: 'Mise au point',
     text: (ctx) => {
       const coach = ctx.world.persons[ctx.team.coachId];
-      return `${coach.nick} vous garde après la review. Il déroule vos erreurs, une par une, sans élever la voix. C'est pire que s'il criait.`;
+      const s = ctx.situation;
+      const base = `${coach.nick} vous garde après la review. Il déroule vos erreurs, une par une, sans élever la voix. C'est pire que s'il criait.`;
+      // Encaisser une mise au point n'a pas le même poids selon ce qu'on porte
+      // déjà. Le joueur sait très bien où il en est.
+      if (s.aBout) return `${base} Vous l’écoutez en pensant que vous n’avez déjà plus rien à donner.`;
+      if (s.saisonDeVie === SAISON_DE_VIE.VETERAN) return `${base} Il y a dix ans, vous auriez discuté. Là, vous êtes surtout fatigué de l’entendre.`;
+      return base;
     },
     choices: [
       {
         id: 'accept',
         label: 'Encaisser et travailler',
+        hint: (ctx) => selon(ctx.situation.aBout, 'Il faudra trouver l’énergie quelque part', 'Prendre la critique et s’y mettre'),
         apply: (ctx) => {
           const coach = ctx.world.persons[ctx.team.coachId];
+          const s = ctx.situation;
           ctx.fx.relation(coach.id, 8, 'Vous avez accepté une critique dure.');
-          ctx.fx.attr('learning', 1.5).attr('discipline', 1).morale(-3).stress(4);
+          // Travailler davantage suppose d'en avoir la ressource. À bout, on
+          // encaisse mais on n'apprend presque plus — et cela coûte.
+          const rendement = s.aBout ? 0.4 : 1;
+          ctx.fx.attr('learning', 1.5 * rendement).attr('discipline', 1 * rendement);
+          ctx.fx.morale(-3).stress(s.aBout ? 8 : 4);
           ctx.fx.later('coaching_payoff', ctx.rng.int(14, 30), { coachId: coach.id });
+          if (s.aBout) return 'Vous notez tout. Vous relisez vos notes trois fois sans les comprendre.';
           return 'Vous notez tout. Vous ne dormez pas très bien, mais vous notez tout.';
+        },
+      },
+      {
+        id: 'admit',
+        label: 'Dire que vous n’en pouvez plus',
+        hint: 'Ce n’est pas une excuse, c’est un fait',
+        // On ne peut dire cela que si c'est vrai, et cela n'a de sens qu'auprès
+        // d'un staff qui existe. C'est aussi la porte d'entrée narrative de la
+        // charge (7B) hors des événements de rupture.
+        available: (ctx) => ctx.situation.aBout || ctx.situation.enchaine,
+        apply: (ctx) => {
+          const coach = ctx.world.persons[ctx.team.coachId];
+          const s = ctx.situation;
+          // Un staff écoute mieux quelqu'un avec qui il a du crédit, et une
+          // structure exigeante pardonne moins.
+          const credit = relationValue(ctx.world, ctx.person.id, coach.id);
+          const ecoute = credit > 10 && !s.structureExigeante;
+          if (ecoute) {
+            relieveLoad(ctx.person, 26, { week: ctx.world.week, reason: 'charge reconnue par le staff' });
+            ctx.fx.relation(coach.id, 10, 'Il a dit qu’il n’en pouvait plus, et on l’a entendu.', { important: true });
+            ctx.fx.stress(-12).morale(6);
+            ctx.fx.log('Charge allégée après une mise au point.', { kind: 'team', important: true });
+            return 'Il repose ses notes. « On va lever le pied sur toi deux semaines. » Vous ne saviez pas que c’était possible.';
+          }
+          ctx.fx.relation(coach.id, -6, 'Il a invoqué la fatigue au mauvais moment.');
+          ctx.fx.morale(-5).stress(4);
+          return 'Il vous répond que tout le monde est fatigué. La conversation s’arrête là.';
         },
       },
       {
         id: 'defend',
         label: 'Vous défendre',
+        hint: (ctx) => selon(ctx.situation.structureExigeante, 'Ici, on ne discute pas beaucoup', 'Expliquer votre lecture'),
         apply: (ctx) => {
           const coach = ctx.world.persons[ctx.team.coachId];
-          if (ctx.person.attrs.communication > 68) {
+          const s = ctx.situation;
+          // Argumenter demande d'être écoutable : de la communication, et une
+          // structure qui laisse la place à la discussion.
+          const seuil = s.structureExigeante ? 78 : 68;
+          if (ctx.person.attrs.communication > seuil) {
             ctx.fx.relation(coach.id, 2, 'Vous avez argumenté votre point de vue.');
             ctx.fx.attr('selfConfidence', 1.5);
             return 'Vous expliquez votre lecture. Il concède un point sur trois. C’est déjà ça.';
@@ -434,16 +511,24 @@ export const teamLifeEvents = [
     cooldown: 26,
     condition: (ctx) =>
       ctx.hasTeam && !!ctx.person.contract && ctx.person.contract.endWeek - ctx.world.week <= 12 && ctx.person.contract.endWeek - ctx.world.week > 0,
-    weight: () => 9,
+    weight: (ctx) => 9 + (ctx.situation.surLeBanc ? 2 : 0),
     title: 'Fin de contrat',
     text: (ctx) => {
       const weeks = ctx.person.contract.endWeek - ctx.world.week;
-      return `Votre contrat avec ${ctx.org?.name} expire dans ${weeks} semaines. Le manager veut savoir où vous en êtes. Vous aussi, d'ailleurs.`;
+      const s = ctx.situation;
+      const base = `Votre contrat avec ${ctx.org?.name} expire dans ${weeks} semaines. Le manager veut savoir où vous en êtes. Vous aussi, d'ailleurs.`;
+      // Ce que le joueur pèse dépend de ce qu'il vit, et il le sait sans qu'on
+      // ait besoin de le lui apprendre.
+      if (s.surLeBanc) return `${base} Difficile de réclamer quoi que ce soit quand on n’a pas joué depuis des semaines.`;
+      if (s.saisonDeVie === SAISON_DE_VIE.VETERAN) return `${base} À votre âge, ce n’est plus le montant qui compte le plus.`;
+      if (s.aBout) return `${base} L’idée de repartir de zéro ailleurs vous épuise d’avance.`;
+      return base;
     },
     choices: [
       {
         id: 'renew',
         label: 'Prolonger',
+        hint: (ctx) => selon(ctx.situation.enDifficulte, 'Ils ne sont peut-être pas d’accord', 'Rester aux conditions actuelles'),
         apply: (ctx) => {
           const strength = teamStrength(ctx.world, ctx.team, { forMatch: false });
           const wanted = ctx.rating >= strength.individual - 4;
@@ -461,9 +546,48 @@ export const teamLifeEvents = [
         },
       },
       {
+        id: 'security',
+        label: 'Demander un contrat long plutôt qu’un gros salaire',
+        hint: 'Moins d’argent, mais savoir où l’on dort',
+        // La sécurité n'a de sens que pour quelqu'un qui sait que le temps joue
+        // contre lui, ou qui n'a plus l'énergie de recommencer ailleurs. Un
+        // espoir en forme ne demande pas cela — et le texte le dit.
+        available: (ctx) =>
+          ctx.situation.saisonDeVie === SAISON_DE_VIE.VETERAN ||
+          ctx.situation.aBout ||
+          ctx.situation.dejaRompu,
+        apply: (ctx) => {
+          const s = ctx.situation;
+          const strength = teamStrength(ctx.world, ctx.team, { forMatch: false });
+          // Une structure accepte volontiers de payer moins longtemps ; elle
+          // hésite si le joueur est devenu un poids.
+          const utile = ctx.rating >= strength.individual - 9;
+          if (!utile) {
+            ctx.fx.morale(-6);
+            ctx.fx.log('Contrat long refusé.', { kind: 'setback' });
+            return 'Ils préfèrent ne rien promettre. Personne ne veut d’engagement long sur vous.';
+          }
+          ctx.person.contract.salary = Math.round(ctx.person.contract.salary * ctx.rng.float(0.78, 0.95));
+          ctx.person.contract.endWeek = ctx.world.week + 52 * ctx.rng.int(2, 4);
+          ctx.fx.morale(s.aBout || s.dejaRompu ? 12 : 7).stress(-6);
+          if (ctx.team.coachId) ctx.fx.relation(ctx.team.coachId, 4, 'Il a choisi la stabilité plutôt que l’argent.');
+          ctx.fx.log(`Contrat long signé chez ${ctx.org.name}.`, { kind: 'contract', important: true });
+          return `Vous signez plus longtemps pour moins cher : ${Math.round(ctx.person.contract.salary).toLocaleString('fr-FR')} € par an. Vous savez où vous serez dans deux ans.`;
+        },
+      },
+      {
         id: 'negotiate',
         label: 'Demander plus',
+        hint: (ctx) =>
+          selon(
+            ctx.situation.visibilite === VISIBILITE.VEDETTE,
+            'Votre nom parle pour vous',
+            'Il faudra le justifier',
+          ),
         risky: true,
+        // On ne réclame pas une revalorisation quand on ne joue pas. Ce n'est
+        // pas le moteur qui l'interdit, c'est la situation qui la rend absurde.
+        available: (ctx) => !ctx.situation.surLeBanc,
         apply: (ctx) => {
           const leverage = ctx.rating - teamStrength(ctx.world, ctx.team, { forMatch: false }).individual;
           const rep = ctx.person.reputation.pros;
@@ -489,8 +613,13 @@ export const teamLifeEvents = [
       {
         id: 'test_market',
         label: 'Tester le marché',
+        hint: (ctx) => selon(ctx.situation.surLeBanc, 'Vous n’avez pas grand-chose à perdre', 'Voir ce que vous valez ailleurs'),
         apply: (ctx) => {
-          const offers = collectOffers(ctx.world, ctx.person, ctx.rng, { maxOffers: 3, minScore: 42 });
+          const s = ctx.situation;
+          // Un joueur qui ne joue pas cherche d'abord une place, pas un rang :
+          // il regarde plus bas, donc il trouve plus souvent.
+          const minScore = s.surLeBanc ? 34 : 42;
+          const offers = collectOffers(ctx.world, ctx.person, ctx.rng, { maxOffers: 3, minScore });
           if (offers.length === 0) {
             ctx.fx.morale(-5);
             ctx.fx.log('Aucune offre extérieure.', { kind: 'setback' });
@@ -516,36 +645,79 @@ export const teamLifeEvents = [
       ctx.pickedMate = mate;
       if (!mate) return `Un coéquipier quitte l'équipe. L'annonce tombe sans prévenir.`;
       const rel = relationValue(ctx.world, ctx.person.id, mate.id);
-      return rel > 40
+      const s = ctx.situation;
+      const base = rel > 40
         ? `${mate.nick} vous appelle avant tout le monde : il part. Il a signé ailleurs. Il voulait que vous l'appreniez de lui.`
         : `${mate.nick} quitte l'équipe. L'annonce tombe sur les réseaux avant que le vestiaire en soit informé.`;
+      // Un départ ouvre une place. Un remplaçant y pense immédiatement.
+      if (s.surLeBanc) return `${base} Une place se libère. Vous n’osez pas encore y penser tout à fait.`;
+      return base;
     },
     choices: [
       {
         id: 'support',
         label: 'Lui souhaiter bonne chance',
+        hint: (ctx) => selon(ctx.situation.surLeBanc, 'Rester correct, même si cela vous arrange', 'Rester en bons termes'),
         apply: (ctx) => {
           const mate = ctx.pickedMate;
           if (!mate) return 'Le départ se fait sans vous.';
+          const s = ctx.situation;
           ctx.fx.relation(mate.id, 10, `${mate.nick} a quitté l'équipe, vous êtes restés proches.`, {
             tag: REL_TAGS.EX_TEAMMATE,
             important: true,
           });
-          ctx.fx.morale(-4).synergy(-3);
+          ctx.fx.synergy(-3);
+          // Perdre un coéquipier ne pèse pas pareil selon ce qu'on perd. Un
+          // remplaçant perd un concurrent autant qu'un camarade.
+          if (s.surLeBanc) {
+            ctx.fx.morale(1);
+            return 'Vous lui souhaitez bonne route. Vous le pensez. Vous pensez aussi à sa place.';
+          }
+          ctx.fx.morale(-4);
           return 'Vous lui souhaitez bonne route. Vous le pensez.';
+        },
+      },
+      {
+        id: 'claim',
+        label: 'Aller voir le staff pour prendre sa place',
+        hint: 'Se proposer, tout de suite, avant les autres',
+        // Cela n'a de sens que pour quelqu'un qui n'a pas la place et qui a
+        // quelqu'un à qui la demander.
+        available: (ctx) => ctx.situation.surLeBanc && ctx.situation.aUnCoach,
+        apply: (ctx) => {
+          const s = ctx.situation;
+          const coach = ctx.world.persons[ctx.team.coachId];
+          const strength = teamStrength(ctx.world, ctx.team, { forMatch: false });
+          // Le staff écoute un joueur qui n'est pas loin du niveau, et qui n'est
+          // pas en train de s'effondrer.
+          const credible = ctx.rating >= strength.individual - 7 && !s.enDifficulte && !s.enConvalescence;
+          ctx.fx.relation(coach?.id, credible ? 6 : -4, credible
+            ? 'Il est venu se proposer au bon moment.'
+            : 'Il est venu se proposer alors qu’il n’était pas prêt.');
+          if (credible) {
+            ctx.fx.morale(6).rep('pros', 2);
+            ctx.fx.log('Candidature au poste laissé vacant.', { kind: 'team' });
+            return 'Vous allez le voir le soir même. Il ne promet rien, mais il écoute.';
+          }
+          ctx.fx.morale(-6).stress(5);
+          return 'Vous allez le voir le soir même. Il vous rappelle gentiment vos dernières sorties.';
         },
       },
       {
         id: 'resent',
         label: 'Mal le prendre',
+        hint: 'Vous n’avez pas envie de faire semblant',
         apply: (ctx) => {
           const mate = ctx.pickedMate;
           if (!mate) return 'Le départ se fait sans vous.';
+          const s = ctx.situation;
           ctx.fx.relation(mate.id, -18, `Vous avez mal vécu le départ de ${mate.nick}.`, {
             tag: REL_TAGS.EX_TEAMMATE,
             important: true,
           });
-          ctx.fx.morale(-7).synergy(-5);
+          ctx.fx.synergy(-5);
+          // Le ressentiment coûte plus cher quand on est déjà mal.
+          ctx.fx.morale(s.aBout || s.enDifficulte ? -10 : -7);
           ctx.fx.later('rivalry_seed', ctx.rng.int(20, 60), { personId: mate.id });
           return 'Vous ne répondez pas à son message. Il le remarquera.';
         },
