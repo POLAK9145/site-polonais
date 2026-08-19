@@ -56,6 +56,21 @@ initEvents({ force: true });
 
 const src = (fn) => (typeof fn === 'function' ? fn.toString() : String(fn ?? ''));
 
+/**
+ * Retire les commentaires avant d'inspecter du source.
+ *
+ * Sans cela, un commentaire qui *explique* qu'on ne lit pas les données cachées
+ * fait échouer le test qui vérifie qu'on ne les lit pas — c'est exactement ce
+ * qui s'est produit sur `situation.js`, dont l'en-tête mentionne
+ * `person.hidden` pour dire qu'il n'y touche jamais. Le garde-fou doit porter
+ * sur le code, pas sur la prose qui le documente.
+ */
+function codeOnly(text) {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
+}
+
 function decisions() {
   return allEvents().filter((d) => (d.choices ?? []).length > 0);
 }
@@ -149,7 +164,7 @@ test('3 — la contextualité ne lit que ce que le joueur peut savoir', () => {
       ['hint', choice.hint],
     ]) {
       if (typeof fn !== 'function') continue;
-      if (interdits.test(src(fn))) fautifs.push(`${def.id}/${choice.id} (${quoi})`);
+      if (interdits.test(codeOnly(src(fn)))) fautifs.push(`${def.id}/${choice.id} (${quoi})`);
     }
   }
   assert.deepEqual(fautifs, [], `des décisions lisent des données cachées : ${fautifs.join(', ')}`);
@@ -158,7 +173,7 @@ test('3 — la contextualité ne lit que ce que le joueur peut savoir', () => {
   // unique, donc le seul endroit à vérifier.
   const source = readFileSync(new URL('../src/engine/events/situation.js', import.meta.url), 'utf8');
   assert.ok(
-    !/\.hidden\b/.test(source),
+    !/\.hidden\b/.test(codeOnly(source)),
     'le vocabulaire du ressenti accède aux données cachées du personnage',
   );
 });
