@@ -62,6 +62,7 @@ import { validateWorld, validateCareer } from './validator.js';
 import { checkAchievements, trackLowPoint } from './achievements.js';
 import { gainFollowers } from './reputation.js';
 import { contextPressure, crashRisk, LOAD_STATES } from './load.js';
+import { situationOf } from './events/situation.js';
 import { isTracing, trace, TRACE } from './trace.js';
 
 /** Crée une session complète : monde généré + carrière du joueur. */
@@ -195,6 +196,10 @@ export function buildContext(session) {
     buildOffer: (t, interest) => buildOfferRaw(world, t, person, interest, rng),
   };
   ctx.fx = createEffects(ctx);
+  // Ce que le joueur sait et ressent de sa situation (étape 7C). Calculé une
+  // fois par contexte : les conditions, les libellés et les conséquences le
+  // lisent, et n'ont donc pas à refaire chacune leur propre lecture d'état.
+  ctx.situation = situationOf(ctx);
   return ctx;
 }
 

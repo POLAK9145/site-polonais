@@ -9,6 +9,7 @@
 import { collectOffers, signPlayer, evaluateInterest } from '../../transfers.js';
 import { STATUS, weightedCeiling } from '../../person.js';
 import { teamNeeds } from '../../team.js';
+import { selon, VISIBILITE, SAISON_DE_VIE, PLACE } from '../situation.js';
 
 /** Équipes de la scène du joueur qui cherchent réellement quelqu'un. */
 function teamsLookingFor(ctx, { maxTier = 5, minTier = 1 } = {}) {
@@ -350,16 +351,35 @@ export const earlyCareerEvents = [
       (!ctx.person.contract || ctx.person.contract.endWeek - ctx.world.week < 10),
     weight: (ctx) => 6 * ctx.difficulty.opportunity,
     title: 'Le marché s’ouvre',
-    text: () =>
-      `La fenêtre de transferts est ouverte. Les structures bougent, les rosters se recomposent. C'est le moment où une carrière se joue en trois messages.`,
+    text: (ctx) => {
+      const s = ctx.situation;
+      const base = `La fenêtre de transferts est ouverte. Les structures bougent, les rosters se recomposent. C'est le moment où une carrière se joue en trois messages.`;
+      // La même fenêtre ne se regarde pas de la même chaise. Ce que le joueur
+      // en pense dépend d'où il est assis, et il le sait très bien.
+      if (s.surLeBanc) return `${base} Vous, vous n’avez pas joué depuis des semaines. Ailleurs, peut-être que si.`;
+      if (s.sansEquipe) return `${base} Vous n’avez rien à quitter. C’est presque un avantage.`;
+      if (s.aBout) return `${base} Changer de structure maintenant voudrait dire tout recommencer, avec ce qu’il vous reste d’énergie.`;
+      return base;
+    },
     choices: [
       {
         id: 'listen',
-        label: 'Écouter le marché',
+        label: (ctx) => selon(ctx.situation.surLeBanc, 'Chercher du temps de jeu ailleurs', 'Écouter le marché'),
+        hint: (ctx) =>
+          selon(
+            ctx.situation.visibilite === VISIBILITE.INCONNU,
+            'Peu de gens savent qui vous êtes',
+            'Voir ce qui existe',
+          ),
         apply: (ctx) => {
-          const offers = collectOffers(ctx.world, ctx.person, ctx.rng, { maxOffers: 3, minScore: 40 });
+          const s = ctx.situation;
+          // Un joueur qui ne joue pas se vend moins bien, mais il est prêt à
+          // écouter plus bas : il accepte donc des propositions qu'un titulaire
+          // rejetterait. On abaisse le seuil, on n'invente pas d'offre.
+          const minScore = s.surLeBanc || s.sansEquipe ? 32 : 40;
+          const offers = collectOffers(ctx.world, ctx.person, ctx.rng, { maxOffers: 3, minScore });
           if (offers.length === 0) {
-            ctx.fx.morale(-4);
+            ctx.fx.morale(s.surLeBanc ? -7 : -4);
             return 'Vous faites savoir que vous écoutez. Le silence est la réponse.';
           }
           ctx.career.offers = offers;
@@ -369,10 +389,44 @@ export const earlyCareerEvents = [
         },
       },
       {
+        id: 'stability',
+        label: 'Faire savoir que vous voulez rester',
+        hint: 'La stabilité plutôt que le pari',
+        // On ne peut vouloir rester que si l'on est quelque part, et cela n'a de
+        // sens que pour un joueur installé — un remplaçant qui demande à rester
+        // demande à ne pas jouer.
+        available: (ctx) => ctx.situation.estTitulaire,
+        apply: (ctx) => {
+          const s = ctx.situation;
+          ctx.career.offers = [];
+          ctx.fx.relation(ctx.team?.coachId, 5, 'Vous avez dit vouloir rester.');
+          if (ctx.team) ctx.team.synergy = Math.min(99, ctx.team.synergy + 3);
+          // Un vétéran y gagne la paix ; un joueur en pleine ascension y perd
+          // une occasion, et il le sent.
+          if (s.saisonDeVie === SAISON_DE_VIE.VETERAN) {
+            ctx.fx.morale(7).stress(-5);
+            return 'Vous dites que vous restez. Le staff est soulagé, et vous aussi.';
+          }
+          ctx.fx.morale(3).rep('pros', 1);
+          return 'Vous dites que vous restez. Le staff est soulagé. Vous vous demandez ce que vous auriez pu obtenir.';
+        },
+      },
+      {
         id: 'ignore',
         label: 'Rester concentré sur le jeu',
+        hint: (ctx) => selon(ctx.situation.aBout, 'Une chose de moins à gérer', 'Travailler pendant que les autres discutent'),
         apply: (ctx) => {
+          const s = ctx.situation;
           ctx.fx.group('gameSense', 0.4).rep('pros', 1);
+          // Ignorer le marché quand on est sur le banc, c'est accepter d'y rester.
+          if (s.surLeBanc) {
+            ctx.fx.morale(-5);
+            return 'Vous ne répondez à personne. Vous vous remettez au travail, sur un poste que vous n’occupez pas.';
+          }
+          if (s.aBout) {
+            ctx.fx.stress(-4);
+            return 'Vous ne répondez à personne. Une fenêtre de moins à vivre.';
+          }
           return 'Vous ne répondez à personne. Votre agent, si vous en aviez un, aurait crié.';
         },
       },

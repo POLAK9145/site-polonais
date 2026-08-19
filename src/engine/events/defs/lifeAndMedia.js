@@ -12,6 +12,7 @@ import { SPONSOR_TYPES } from '../../../data/orgs.js';
 import { mods } from '../../person.js';
 import { FAMILY_BY_ID } from '../../../data/origins.js';
 import { isHigh, relieveLoad, crashRisk, markBurnout, LOAD_STATES } from '../../load.js';
+import { situationOf, selon, VISIBILITE, ARGENT, PLACE, SAISON_DE_VIE } from '../situation.js';
 
 function family(ctx) {
   return FAMILY_BY_ID[ctx.career.familyId] ?? null;
@@ -180,25 +181,71 @@ export const lifeAndMediaEvents = [
       return clamp(1 + ctx.person.reputation.public * 0.05 + ctx.person.attrs.entertainment * 0.02, 0, 6) * m.mediaGrowth;
     },
     title: 'Un clip qui tourne',
-    text: () =>
-      `Une action de vous circule. Le clip est court, sorti de son contexte, et il tourne bien au-delà de votre communauté habituelle.`,
+    text: (ctx) => {
+      const s = ctx.situation;
+      const base = `Une action de vous circule. Le clip est court, sorti de son contexte, et il tourne bien au-delà de votre communauté habituelle.`;
+      // Ce que le joueur remarque en premier dépend de son état. C'est le même
+      // clip ; ce n'est pas la même semaine pour le recevoir.
+      if (s.aBout) return `${base} Il faudrait enchaîner, capitaliser, publier. Vous n’en avez pas la force cette semaine.`;
+      if (s.enDifficulte) return `${base} L’ironie ne vous échappe pas : vous n’avez jamais aussi mal joué.`;
+      if (s.visibilite === VISIBILITE.INCONNU) return `${base} C’est la première fois que des inconnus parlent de vous.`;
+      return base;
+    },
     choices: [
       {
         id: 'ride',
         label: 'Surfer dessus',
+        hint: (ctx) =>
+          selon(ctx.situation.aBout, 'Beaucoup d’audience, et du travail que vous n’avez pas', 'Beaucoup d’audience, un peu de travail'),
         apply: (ctx) => {
+          const s = ctx.situation;
           const gain = Math.round(2500 + Math.sqrt(ctx.person.followers) * ctx.rng.float(40, 140));
-          ctx.fx.followers(gain).rep('public', 6).rep('media', 5).morale(4);
-          ctx.fx.log(`Clip viral : +${gain.toLocaleString('fr-FR')} abonnés.`, { kind: 'media' });
+          // Capitaliser demande de produire. Un joueur à bout le paie ; il vient
+          // de le lire dans le texte, ce n'est pas une pénalité cachée.
+          const rendu = s.aBout ? Math.round(gain * 0.7) : gain;
+          ctx.fx.followers(rendu).rep('public', 6).rep('media', 5);
+          ctx.fx.log(`Clip viral : +${rendu.toLocaleString('fr-FR')} abonnés.`, { kind: 'media' });
           ctx.fx.later('sponsor_interest', ctx.rng.int(8, 20), null);
-          return `Vous enchaînez avec deux vidéos. ${gain.toLocaleString('fr-FR')} personnes vous suivent en plus.`;
+          if (s.aBout) {
+            ctx.fx.stress(7).fatigue(5).morale(1);
+            return `Vous enchaînez avec deux vidéos, en serrant les dents. ${rendu.toLocaleString('fr-FR')} personnes vous suivent en plus, et vous êtes vidé.`;
+          }
+          ctx.fx.morale(4);
+          return `Vous enchaînez avec deux vidéos. ${rendu.toLocaleString('fr-FR')} personnes vous suivent en plus.`;
+        },
+      },
+      {
+        id: 'frame',
+        label: 'Reprendre la main sur le récit',
+        hint: 'Expliquer l’action vous-même, en professionnel',
+        // Il faut déjà avoir une voix pour que cadrer serve à quelque chose.
+        available: (ctx) =>
+          ctx.situation.visibilite !== VISIBILITE.INCONNU && !ctx.situation.enConvalescence,
+        apply: (ctx) => {
+          const s = ctx.situation;
+          const gain = Math.round(900 + Math.sqrt(ctx.person.followers) * ctx.rng.float(14, 42));
+          ctx.fx.followers(gain).rep('pros', 4).rep('media', 2);
+          // Expliquer une action qu'on a ratée ne passe pas comme expliquer une
+          // action réussie : le milieu regarde la forme du moment.
+          if (s.enDifficulte) {
+            ctx.fx.rep('community', -2).morale(-2);
+            return 'Vous décomposez l’action posément. Le milieu apprécie la lucidité ; les commentaires vous rappellent votre saison.';
+          }
+          ctx.fx.rep('community', 3).morale(2);
+          return 'Vous décomposez l’action posément. Ce n’est pas ce qui fait le plus de vues, mais les joueurs vous lisent.';
         },
       },
       {
         id: 'ignore',
         label: 'Ne rien en faire',
+        hint: (ctx) => selon(ctx.situation.aBout, 'Une chose de moins à porter', 'Le clip vivra sa vie'),
         apply: (ctx) => {
+          const s = ctx.situation;
           ctx.fx.followers(Math.round(400 + Math.sqrt(ctx.person.followers) * 12)).rep('pros', 2);
+          if (s.aBout) {
+            ctx.fx.stress(-4).morale(2);
+            return 'Vous ne commentez pas. Le clip vit sa vie, puis meurt — et vous dormez.';
+          }
           return 'Vous ne commentez pas. Le clip vit sa vie, puis meurt.';
         },
       },
@@ -215,29 +262,105 @@ export const lifeAndMediaEvents = [
     text: (ctx) => {
       const sponsor = ctx.rng.pick(SPONSOR_TYPES.filter((s) => s.id !== 'local'));
       ctx.pickedSponsor = sponsor;
+      // Le montant suit déjà l'audience : une marque paie ce que vaut la
+      // visibilité, et le joueur le lit dans la proposition.
       const value = Math.round((3000 + ctx.person.followers * 0.35) * sponsor.value);
       ctx.pickedSponsorValue = value;
-      return `Une marque du secteur « ${sponsor.label} » vous propose un partenariat : ${value.toLocaleString('fr-FR')} € sur l'année, contre des publications régulières et une présence à leurs événements.`;
+      const s = ctx.situation;
+      // Ce que le joueur perçoit de l'offre dépend de ce qu'il vit. Les mêmes
+      // 8 000 € ne se lisent pas de la même façon selon qu'on est fauché ou non.
+      const lecture = s.fauche
+        ? ' Vous n’avez pas vraiment le luxe de réfléchir longtemps.'
+        : s.visibilite === VISIBILITE.VEDETTE
+          ? ' Le montant vous paraît bas, pour ce que vous représentez aujourd’hui.'
+          : '';
+      const charge = s.aBout
+        ? ' « Présence à leurs événements » — vous pensez immédiatement aux week-ends que cela mangera.'
+        : '';
+      return `Une marque du secteur « ${sponsor.label} » vous propose un partenariat : ${value.toLocaleString('fr-FR')} € sur l'année, contre des publications régulières et une présence à leurs événements.${lecture}${charge}`;
     },
     choices: [
       {
         id: 'accept',
-        label: 'Accepter',
+        label: (ctx) => selon(ctx.situation.fauche, 'Accepter — vous en avez besoin', 'Accepter'),
+        hint: (ctx) =>
+          selon(
+            ctx.situation.aBout,
+            'De l’argent, et des obligations en plus d’un calendrier déjà plein',
+            'De l’argent, et des obligations',
+          ),
         apply: (ctx) => {
           const value = ctx.pickedSponsorValue ?? 4000;
+          const s = ctx.situation;
           ctx.fx.money(Math.round(value * 0.4)).rep('media', 5);
           ctx.fx.later('sponsor_payment', 26, { amount: Math.round(value * 0.3) });
           ctx.fx.later('sponsor_payment', 52, { amount: Math.round(value * 0.3) });
           ctx.fx.log('Contrat de sponsoring personnel signé.', { kind: 'money', important: true });
-          ctx.fx.stress(4);
+          // Signer coûte du temps et de l'attention. Sur un joueur déjà au bout,
+          // cela pèse davantage — ce n'est pas un malus caché, c'est ce que le
+          // texte vient de lui dire.
+          ctx.fx.stress(s.aBout ? 9 : 4);
+          if (s.aBout) ctx.fx.fatigue(4);
+          // Et sortir de l'urgence financière soulage réellement.
+          if (s.fauche) {
+            ctx.fx.morale(6);
+            return 'Vous signez. Le premier versement tombe la semaine suivante, et vous respirez.';
+          }
           return 'Vous signez. Le premier versement tombe la semaine suivante.';
+        },
+      },
+      {
+        id: 'negotiate',
+        label: 'Négocier le montant',
+        hint: 'Votre nom a du poids — mais la marque peut se lasser',
+        risky: true,
+        // On ne négocie pas quand personne ne vous connaît : la marque
+        // raccrocherait. Le joueur sait où il en est de sa notoriété.
+        available: (ctx) =>
+          ctx.situation.visibilite === VISIBILITE.CONNU || ctx.situation.visibilite === VISIBILITE.VEDETTE,
+        apply: (ctx) => {
+          const value = ctx.pickedSponsorValue ?? 4000;
+          const s = ctx.situation;
+          // Une vedette a le dessus, quelqu'un de simplement connu beaucoup moins.
+          const poids = s.visibilite === VISIBILITE.VEDETTE ? 0.72 : 0.45;
+          if (ctx.rng.chance(poids)) {
+            const gagne = Math.round(value * 0.65);
+            ctx.fx.money(gagne).rep('media', 6).rep('pros', 2);
+            ctx.fx.later('sponsor_payment', 26, { amount: Math.round(value * 0.4) });
+            ctx.fx.log('Sponsoring renégocié à la hausse.', { kind: 'money', important: true });
+            ctx.fx.stress(s.aBout ? 7 : 3);
+            return `Ils reviennent avec une meilleure offre. Votre nom valait plus que leur première proposition.`;
+          }
+          ctx.fx.rep('media', -3).morale(-5);
+          if (s.fauche) {
+            ctx.fx.morale(-4);
+            return 'Ils ne rappellent pas. Vous regardez votre compte en banque et vous vous en voulez.';
+          }
+          return 'Ils ne rappellent pas. L’agence a trouvé quelqu’un de moins gourmand.';
         },
       },
       {
         id: 'refuse',
         label: 'Refuser',
+        hint: (ctx) =>
+          selon(
+            ctx.situation.fauche,
+            'Votre communauté approuvera. Votre loyer, moins',
+            'Votre communauté remarquera que vous ne vendez pas n’importe quoi',
+          ),
         apply: (ctx) => {
+          const s = ctx.situation;
           ctx.fx.rep('community', 4).rep('pros', 1);
+          // Refuser de l'argent quand on n'en a pas est un vrai renoncement.
+          if (s.fauche) {
+            ctx.fx.morale(-6);
+            return 'Vous déclinez. Votre communauté remarque que vous ne vendez pas n’importe quoi. Vous, vous pensez au mois prochain.';
+          }
+          // Et refuser quand on est à bout, c'est protéger son calendrier.
+          if (s.aBout) {
+            ctx.fx.morale(3).stress(-3);
+            return 'Vous déclinez. Un week-end de moins à tenir : c’est déjà quelque chose.';
+          }
           return 'Vous déclinez. Votre communauté remarque que vous ne vendez pas n’importe quoi.';
         },
       },
