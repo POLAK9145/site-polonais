@@ -11,6 +11,8 @@ import { GAMES, GAMES_BY_ID, transferRate } from '../../../data/games.js';
 import { baseRating, age as personAge, STATUS, weightedCeiling } from '../../person.js';
 import { relationValue, REL_TAGS } from '../../relations.js';
 import { releasePlayer } from '../../transfers.js';
+import { selon, VISIBILITE, SAISON_DE_VIE } from '../situation.js';
+import { relieveLoad } from '../../load.js';
 
 /** Candidat crédible au rôle de rival : même scène, niveau et âge proches. */
 function rivalCandidate(ctx) {
@@ -229,21 +231,61 @@ export const worldEvents = [
     condition: (ctx) => ctx.gameState.popularity < 35 && ctx.gameState.alive,
     weight: (ctx) => clamp((40 - ctx.gameState.popularity) * 0.25, 0, 8),
     title: 'La scène se vide',
-    text: (ctx) =>
-      `${ctx.game.name} perd du terrain. Les audiences baissent, deux organisations ont fermé leur section, et les dotations fondent. Ceux qui restent le font par attachement.`,
+    text: (ctx) => {
+      const s = ctx.situation;
+      const base = `${ctx.game.name} perd du terrain. Les audiences baissent, deux organisations ont fermé leur section, et les dotations fondent. Ceux qui restent le font par attachement.`;
+      if (s.saisonDeVie === SAISON_DE_VIE.VETERAN) return `${base} Vous avez vu arriver cette scène. Vous la verrez partir.`;
+      if (s.fauche) return `${base} Des dotations qui fondent, c’est votre revenu qui fond.`;
+      return base;
+    },
     choices: [
       {
         id: 'stay',
         label: 'Rester fidèle au jeu',
+        hint: (ctx) => selon(ctx.situation.fauche, 'La communauté vous le rendra. Pas votre banque', 'La communauté ne l’oubliera pas'),
         apply: (ctx) => {
-          ctx.fx.rep('community', 12).morale(4).flag('loyal_to_scene', true);
+          const s = ctx.situation;
+          ctx.fx.rep('community', 12).flag('loyal_to_scene', true);
           ctx.fx.log(`Choix de rester sur ${ctx.game.shortName} malgré le déclin.`, { kind: 'decision', important: true });
+          // Rester sur une scène qui meurt est un choix confortable quand on a
+          // gagné, coûteux quand on n'a plus rien.
+          if (s.fauche) {
+            ctx.fx.morale(-2);
+            return 'Vous restez. La communauté ne l’oubliera pas. Les dotations, elles, continuent de baisser.';
+          }
+          if (s.aDejaGagne) {
+            ctx.fx.morale(7).rep('pros', 3);
+            return 'Vous restez. Venant de vous, cela pèse : la communauté sait ce que vous avez gagné ici.';
+          }
+          ctx.fx.morale(4);
           return 'Vous restez. La communauté ne l’oubliera pas.';
+        },
+      },
+      {
+        id: 'organize',
+        label: 'Essayer de faire vivre ce qui reste',
+        hint: 'Votre nom peut encore rassembler du monde',
+        // Il faut un nom pour rassembler. Un joueur inconnu n'a personne à appeler.
+        available: (ctx) =>
+          ctx.situation.visibilite === VISIBILITE.CONNU || ctx.situation.visibilite === VISIBILITE.VEDETTE,
+        apply: (ctx) => {
+          const s = ctx.situation;
+          ctx.fx.rep('community', 18).rep('media', 4).flag('scene_pillar', true);
+          ctx.fx.log(`Mobilisation autour de ${ctx.game.shortName}.`, { kind: 'decision', important: true });
+          // Porter une scène à bout de bras est un travail, et il fatigue.
+          ctx.fx.fatigue(s.aBout ? 12 : 7).stress(5);
+          if (s.aBout) {
+            ctx.fx.morale(2);
+            return 'Vous organisez des tournois communautaires, vous appelez d’anciens joueurs. C’est du travail en plus, et vous n’en avez pas les moyens.';
+          }
+          ctx.fx.morale(6);
+          return 'Vous organisez des tournois communautaires, vous appelez d’anciens joueurs. Quelque chose repart, un peu.';
         },
       },
       {
         id: 'explore',
         label: 'Regarder ailleurs',
+        hint: 'Lancer autre chose le soir, juste pour voir',
         apply: (ctx) => {
           ctx.fx.chain('game_switch_offer', { delay: ctx.rng.int(2, 8), expires: 40 });
           return 'Vous commencez à lancer un autre jeu le soir. Juste pour voir.';
@@ -413,15 +455,21 @@ export const worldEvents = [
       const kid = findProdigy(ctx);
       ctx.pickedProdigy = kid;
       if (!kid) return 'La scène tourne, comme toujours.';
-      return `${kid.nick}, ${Math.floor(personAge(kid, ctx.world.week))} ans, arrive dans la scène. Tout le monde parle de lui. Vous vous souvenez d'avoir été ce joueur-là.`;
+      const s = ctx.situation;
+      const base = `${kid.nick}, ${Math.floor(personAge(kid, ctx.world.week))} ans, arrive dans la scène. Tout le monde parle de lui. Vous vous souvenez d'avoir été ce joueur-là.`;
+      if (s.surLeBanc) return `${base} On parle déjà de lui pour votre poste.`;
+      if (s.aBout) return `${base} Il a l’énergie que vous aviez. Vous ne l’avez plus.`;
+      return base;
     },
     choices: [
       {
         id: 'mentor',
         label: 'Le prendre sous votre aile',
+        hint: 'Transmettre — et compter pour autre chose que vos réflexes',
         apply: (ctx) => {
           const kid = ctx.pickedProdigy ?? findProdigy(ctx);
           if (!kid) return 'Le moment passe.';
+          const s = ctx.situation;
           ctx.fx.relation(kid.id, 30, `Vous avez pris ${kid.nick} sous votre aile.`, {
             tag: REL_TAGS.PROTEGE,
             important: true,
@@ -429,16 +477,27 @@ export const worldEvents = [
           ctx.fx.attr('leadership', 2).attr('motivation', 2).rep('pros', 5);
           ctx.fx.log(`Devient le mentor de ${kid.nick}.`, { kind: 'social', important: true });
           ctx.fx.later('protege_rise', ctx.rng.int(50, 120), { personId: kid.id });
+          // Transmettre donne un rôle à celui qui n'en a plus sur le terrain.
+          if (s.surLeBanc || s.aBout) {
+            ctx.fx.morale(8);
+            return 'Vous lui expliquez ce que personne ne vous avait expliqué. Vous servez encore à quelque chose.';
+          }
           return 'Vous lui expliquez ce que personne ne vous avait expliqué.';
         },
       },
       {
         id: 'compete',
         label: 'Lui montrer qui est encore là',
+        hint: (ctx) => selon(ctx.situation.aBout, 'À votre état, ce sera très cher', 'À votre âge, ça se paie'),
         apply: (ctx) => {
           const kid = ctx.pickedProdigy ?? findProdigy(ctx);
+          const s = ctx.situation;
           if (kid) ctx.fx.relation(kid.id, -10, `Rapport de force avec ${kid.nick}.`, { tag: REL_TAGS.RIVAL });
-          ctx.fx.attr('workCapacity', 2).fatigue(6).form(2).morale(3);
+          // Doubler le volume est une charge réelle, et le corps d'un joueur
+          // déjà au bout ne l'absorbe pas.
+          ctx.fx.attr('workCapacity', s.aBout ? 0.7 : 2);
+          ctx.fx.fatigue(s.aBout ? 14 : 6).form(s.aBout ? -1 : 2).morale(3);
+          if (s.aBout) return 'Vous doublez votre volume d’entraînement. À votre âge et dans votre état, ça se paie tout de suite.';
           return 'Vous doublez votre volume d’entraînement. À votre âge, ça se paie.';
         },
       },
@@ -456,35 +515,84 @@ export const worldEvents = [
     },
     weight: (ctx) => clamp((ctx.person.stats.peakRating - ctx.rating) * 0.5, 0, 8),
     title: 'Ce n’est plus pareil',
-    text: (ctx) =>
-      `Les réflexes ne répondent plus tout à fait. Vous compensez par la lecture, l'expérience, le placement. Ça marche encore. Ça ne marchera pas toujours.`,
+    text: (ctx) => {
+      const s = ctx.situation;
+      const base = `Les réflexes ne répondent plus tout à fait. Vous compensez par la lecture, l'expérience, le placement. Ça marche encore. Ça ne marchera pas toujours.`;
+      // Le joueur sait faire la différence entre vieillir et être vidé — et
+      // c'est une distinction qui change complètement la décision.
+      if (ctx.situation.aBout) return `${base} Une partie de vous se demande si c’est vraiment l’âge, ou seulement l’état dans lequel vous êtes depuis des mois.`;
+      if (s.surLeBanc) return `${base} Le staff, lui, a déjà tranché.`;
+      return base;
+    },
     choices: [
       {
         id: 'adapt_role',
         label: 'Changer votre façon de jouer',
+        hint: 'Moins vite, beaucoup mieux placé',
         apply: (ctx) => {
-          ctx.fx.attr('reading', 2.5).attr('decision', 2.5).attr('anticipation', 2).attr('riskControl', 2);
+          const s = ctx.situation;
+          // Se réinventer demande de la disponibilité mentale. Épuisé, on
+          // n'apprend pas un nouveau métier.
+          const rendement = s.aBout ? 0.5 : 1;
+          ctx.fx.attr('reading', 2.5 * rendement).attr('decision', 2.5 * rendement);
+          ctx.fx.attr('anticipation', 2 * rendement).attr('riskControl', 2 * rendement);
           ctx.fx.log('Reconversion du style de jeu.', { kind: 'decision', important: true });
           ctx.fx.flag('reinvented', true);
+          if (s.aBout) return 'Vous essayez de jouer autrement. Les idées sont bonnes ; vous n’avez pas la tête à les appliquer.';
           return 'Vous jouez moins vite et beaucoup mieux placé. Les jeunes ne comprennent pas comment vous les battez.';
+        },
+      },
+      {
+        id: 'rebuild',
+        label: 'Vous demander si c’est l’âge ou l’usure',
+        hint: 'Lever le pied avant de conclure',
+        // On ne se pose la question que si l'usure est réelle. Un joueur frais
+        // en déclin sait que c'est l'âge.
+        available: (ctx) => ctx.situation.aBout || ctx.situation.enchaine || ctx.situation.dejaRompu,
+        apply: (ctx) => {
+          const s = ctx.situation;
+          relieveLoad(ctx.person, 34, { week: ctx.world.week, reason: 'doute sur l’usure' });
+          ctx.fx.stress(-10).flag('suspected_burnout', true);
+          ctx.fx.log('Pause prise pour distinguer l’âge de l’usure.', { kind: 'decision', important: true });
+          // Si c'était bien l'usure, la forme revient un peu. Sinon, on a
+          // seulement perdu des semaines — et on le sait maintenant.
+          if (s.enchaine || s.aBout) {
+            ctx.fx.form(4).morale(6);
+            return 'Vous levez le pied trois semaines. Une partie de ce que vous croyiez perdu revient. Ce n’était pas l’âge.';
+          }
+          ctx.fx.morale(-3);
+          return 'Vous levez le pied trois semaines. Rien ne revient. C’était bien l’âge.';
         },
       },
       {
         id: 'fight_it',
         label: 'Travailler encore plus dur',
+        hint: (ctx) => selon(ctx.situation.aBout, 'Votre corps a déjà répondu à cette question', 'Doubler la mécanique'),
         apply: (ctx) => {
-          ctx.fx.group('mechanical', 1.2).fatigue(14).stress(10);
+          const s = ctx.situation;
+          ctx.fx.group('mechanical', s.aBout ? 0.5 : 1.2);
+          ctx.fx.fatigue(s.aBout ? 20 : 14).stress(s.aBout ? 15 : 10);
           ctx.fx.later('overwork_toll', 20, null);
+          if (s.aBout) return 'Vous doublez les sessions de mécanique. Votre corps ne proteste plus : il lâche.';
           return 'Vous doublez les sessions de mécanique. Votre corps proteste.';
         },
       },
       {
         id: 'accept',
         label: 'Commencer à penser à l’après',
+        hint: (ctx) => selon(ctx.situation.aDejaGagne, 'Vous avez de quoi regarder derrière vous', 'Regarder ce que font les anciens'),
         apply: (ctx) => {
+          const s = ctx.situation;
           ctx.fx.flag('thinking_retirement', true).stress(-8).attr('learning', 2);
           ctx.fx.log('Réflexion sur l’après-carrière.', { kind: 'decision' });
-          return 'Vous commencez à regarder ce que font les anciens. Coaching, analyse, contenu.';
+          // Envisager l'après est apaisant quand on a gagné quelque chose,
+          // amer quand on n'a rien à montrer.
+          if (s.aDejaGagne) {
+            ctx.fx.morale(4);
+            return 'Vous commencez à regarder ce que font les anciens. Coaching, analyse, contenu. Vous avez un palmarès à faire valoir.';
+          }
+          ctx.fx.morale(-4);
+          return 'Vous commencez à regarder ce que font les anciens. Coaching, analyse, contenu. Vous n’avez pas grand-chose à mettre sur une carte de visite.';
         },
       },
     ],
@@ -504,31 +612,59 @@ export const worldEvents = [
     },
     weight: (ctx) => clamp((ctx.age - 25) * 1.1 + (ctx.career.flags.thinking_retirement ? 4 : 0), 0, 12),
     title: 'La question',
-    text: (ctx) =>
-      `Vous avez ${Math.floor(ctx.age)} ans. Une saison de plus, ou pas. Ce n'est plus une question de niveau : c'est une question d'envie, d'argent, et de ce que vous voulez faire des dix prochaines années.`,
+    text: (ctx) => {
+      const s = ctx.situation;
+      const base = `Vous avez ${Math.floor(ctx.age)} ans. Une saison de plus, ou pas. Ce n'est plus une question de niveau : c'est une question d'envie, d'argent, et de ce que vous voulez faire des dix prochaines années.`;
+      // Ce qui pèse dans la balance dépend de ce qu'on a et de ce qu'on n'a plus.
+      if (s.dejaRompu && s.aBout) return `${base} Vous êtes déjà tombé une fois. Vous savez à quoi ressemble la suite si vous continuez comme ça.`;
+      if (s.fauche) return `${base} La question d’argent, elle, est déjà tranchée : il n’y en a pas.`;
+      if (s.aDejaGagne) return `${base} Vous avez gagné quelque chose. Personne ne pourra vous l’enlever, quoi que vous décidiez.`;
+      return base;
+    },
     choices: [
       {
         id: 'continue',
         label: 'Continuer',
+        hint: (ctx) => selon(ctx.situation.aBout, 'En sachant dans quel état vous êtes', 'Une saison de plus'),
         apply: (ctx) => {
-          ctx.fx.morale(8).flag('thinking_retirement', false);
+          const s = ctx.situation;
+          ctx.fx.flag('thinking_retirement', false);
+          // Décider de continuer quand on est au bout n'est pas le même élan que
+          // décider de continuer en pleine forme.
+          if (s.aBout || s.dejaRompu) {
+            ctx.fx.morale(4).stress(6);
+            return 'Vous continuez. Vous ne savez pas encore jusqu’à quand, et cette fois la question ne vous quitte plus.';
+          }
+          ctx.fx.morale(8);
           return 'Vous continuez. Vous ne savez pas encore jusqu’à quand.';
         },
       },
       {
         id: 'last_season',
         label: 'Annoncer une dernière saison',
+        hint: (ctx) => selon(ctx.situation.visibilite === VISIBILITE.INCONNU, 'Peu de gens s’en apercevront', 'Chaque match deviendra un adieu'),
+        // On n'annonce une dernière saison que si l'on a quelque part où la
+        // jouer. Sans équipe, il n'y a rien à annoncer.
+        available: (ctx) => ctx.hasTeam,
         apply: (ctx) => {
-          ctx.fx.flag('last_season', ctx.world.week + 52).morale(10).rep('public', 8).rep('community', 8);
+          const s = ctx.situation;
+          ctx.fx.flag('last_season', ctx.world.week + 52).morale(10);
+          // L'écho dépend de ce que le public sait de vous.
+          const echo = s.visibilite === VISIBILITE.VEDETTE ? 14 : s.visibilite === VISIBILITE.INCONNU ? 2 : 8;
+          ctx.fx.rep('public', echo).rep('community', echo);
           ctx.fx.log('Annonce d’une dernière saison.', { kind: 'career', important: true });
           ctx.fx.news(`${ctx.person.nick} annonce sa dernière saison`, 'Une page de la scène se tourne.');
           ctx.fx.memory('ending', 'La dernière saison', 'Vous avez annoncé que ce serait la dernière.');
+          if (s.visibilite === VISIBILITE.INCONNU) {
+            return 'Vous l’annoncez. Quelques dizaines de personnes réagissent. Chaque match devient quand même un adieu.';
+          }
           return 'Vous l’annoncez publiquement. Chaque match devient un adieu.';
         },
       },
       {
         id: 'retire_now',
         label: 'Arrêter maintenant',
+        hint: (ctx) => selon(ctx.situation.fauche, 'Sans filet, mais sans y laisser plus', 'Sans conférence de presse'),
         apply: (ctx) => {
           ctx.career.pendingRetirement = 'immediate';
           ctx.fx.log('Décision d’arrêter la compétition.', { kind: 'career', important: true });

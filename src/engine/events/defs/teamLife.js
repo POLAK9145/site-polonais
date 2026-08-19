@@ -393,28 +393,64 @@ export const teamLifeEvents = [
     title: 'Sur le banc',
     text: (ctx) => {
       const org = ctx.org;
-      return `Le staff de ${org?.name ?? 'votre équipe'} vous annonce que vous ne commencerez pas le prochain match. Ce n'est pas présenté comme une sanction. Ça en est une.`;
+      const s = ctx.situation;
+      const base = `Le staff de ${org?.name ?? 'votre équipe'} vous annonce que vous ne commencerez pas le prochain match. Ce n'est pas présenté comme une sanction. Ça en est une.`;
+      // Un joueur épuisé entend autre chose dans la même phrase.
+      if (s.aBout) return `${base} Une partie de vous, celle qui n’a pas dormi depuis trois mois, est presque soulagée.`;
+      if (s.saisonDeVie === SAISON_DE_VIE.VETERAN) return `${base} Vous connaissez la suite : ça commence comme ça.`;
+      return base;
     },
     choices: [
       {
         id: 'fight',
         label: 'Vous battre pour votre place',
+        hint: (ctx) => selon(ctx.situation.aBout, 'Doubler les heures, avec ce qu’il vous reste', 'Doubler les heures, sans rien dire'),
         apply: (ctx) => {
+          const s = ctx.situation;
           benchPlayer(ctx);
-          ctx.fx.stress(10).morale(-10).attr('workCapacity', 1.5).flag('benched', true);
+          ctx.fx.stress(10).morale(-10).flag('benched', true);
+          // Doubler les heures est une charge réelle, et elle s'ajoute.
+          ctx.fx.attr('workCapacity', s.aBout ? 0.6 : 1.5);
+          if (s.aBout) ctx.fx.fatigue(8);
           ctx.fx.log('Mis sur le banc.', { kind: 'setback', important: true });
           ctx.fx.chain('bench_verdict', { delay: ctx.rng.int(6, 14), expires: 30 });
+          if (s.aBout) return 'Vous doublez vos heures. Vous ne dites rien à personne, et votre corps ne suit pas.';
           return 'Vous doublez vos heures. Vous ne dites rien à personne.';
+        },
+      },
+      {
+        id: 'rest',
+        label: 'Prendre ce banc comme une pause',
+        hint: 'Vous récupérer, et revenir entier',
+        // Ce n'est une option que pour quelqu'un qui a réellement besoin de
+        // souffler. Un joueur frais mis sur le banc ne se dit pas cela.
+        available: (ctx) => ctx.situation.aBout || ctx.situation.enchaine || ctx.situation.dejaRompu,
+        apply: (ctx) => {
+          benchPlayer(ctx);
+          const s = ctx.situation;
+          relieveLoad(ctx.person, 30, { week: ctx.world.week, reason: 'banc accepté comme pause' });
+          ctx.fx.stress(-10).morale(-3).flag('benched', true);
+          ctx.fx.log('Mise à l’écart utilisée comme récupération.', { kind: 'team', important: true });
+          ctx.fx.chain('bench_verdict', { delay: ctx.rng.int(10, 20), expires: 30 });
+          // Le staff n'aime pas toujours ; une structure exigeante y voit un renoncement.
+          if (ctx.team.coachId) {
+            ctx.fx.relation(ctx.team.coachId, s.structureExigeante ? -4 : 2, s.structureExigeante
+              ? 'Il n’a pas contesté sa mise à l’écart. Le staff y a vu un abandon.'
+              : 'Il a accepté sa mise à l’écart sans drame.');
+          }
+          return 'Vous ne protestez pas. Vous dormez huit heures pour la première fois depuis longtemps.';
         },
       },
       {
         id: 'demand',
         label: 'Exiger des explications',
+        hint: (ctx) => selon(ctx.situation.structureExigeante, 'Ici, cela se retiendra contre vous', 'Vous voulez savoir pourquoi'),
         risky: true,
         apply: (ctx) => {
+          const s = ctx.situation;
           benchPlayer(ctx);
           ctx.fx.stress(8).flag('benched', true);
-          if (ctx.team.coachId) ctx.fx.relation(ctx.team.coachId, -9, 'Vous avez contesté votre mise à l’écart.');
+          if (ctx.team.coachId) ctx.fx.relation(ctx.team.coachId, s.structureExigeante ? -13 : -9, 'Vous avez contesté votre mise à l’écart.');
           ctx.fx.rep('toxicity', 3);
           ctx.fx.chain('bench_verdict', { delay: ctx.rng.int(4, 10), expires: 30 });
           return 'On vous répond que la décision est sportive. Vous n’y croyez pas une seconde.';
@@ -477,28 +513,72 @@ export const teamLifeEvents = [
       ctx.person.stats.matches > 25,
     weight: (ctx) => clamp((ctx.person.attrs.leadership - 60) * 0.35, 0, 9),
     title: 'On vous propose le rôle',
-    text: (ctx) =>
-      `Le staff veut confier la prise de parole en jeu à quelqu'un. Votre nom revient. C'est une charge : plus de responsabilité, moins de liberté, et la faute pour vous quand ça rate.`,
+    text: (ctx) => {
+      const s = ctx.situation;
+      const base = `Le staff veut confier la prise de parole en jeu à quelqu'un. Votre nom revient. C'est une charge : plus de responsabilité, moins de liberté, et la faute pour vous quand ça rate.`;
+      if (s.aBout) return `${base} On vous demande d’en porter plus, à un moment où vous n’arrivez déjà plus à porter le reste.`;
+      if (s.saisonDeVie === SAISON_DE_VIE.VETERAN) return `${base} C’est peut-être ce qui vous gardera utile quand les réflexes lâcheront.`;
+      return base;
+    },
     choices: [
       {
         id: 'accept',
         label: 'Accepter le rôle',
+        hint: (ctx) => selon(ctx.situation.aBout, 'Une charge de plus, sur une pile qui déborde', 'Plus de responsabilité, moins de liberté'),
         apply: (ctx) => {
+          const s = ctx.situation;
           ctx.person.roleId = ctx.game.roles?.find((r) => r.id === 'igl' || r.id === 'shotcaller')?.id ?? ctx.person.roleId;
           ctx.fx.attr('leadership', 3).attr('decision', 2).attr('communication', 2);
-          ctx.fx.synergy(6).stress(9).flag('captain', true);
+          ctx.fx.synergy(6).flag('captain', true);
           ctx.fx.log('Devient le meneur de jeu de l’équipe.', { kind: 'team', important: true });
           ctx.fx.memory('leadership', 'Capitaine', 'On vous a confié la voix de l’équipe.');
           ctx.fx.achievement('became_captain');
+          // Le capitanat est une charge réelle : elle s'ajoute à ce qui est déjà là.
+          ctx.fx.stress(s.aBout ? 15 : 9);
+          if (s.aBout) ctx.fx.fatigue(5);
           return 'Vous acceptez. À partir de maintenant, les silences sont les vôtres à combler.';
+        },
+      },
+      {
+        id: 'share',
+        label: 'Accepter, à condition de partager la charge',
+        hint: 'Demander que quelqu’un d’autre porte une partie',
+        // On ne négocie le rôle que si l'on a un vétéran de crédit ou un besoin
+        // reconnu de souffler — et il faut quelqu'un en face pour l'entendre.
+        available: (ctx) =>
+          ctx.situation.aUnCoach &&
+          (ctx.situation.aBout || ctx.situation.saisonDeVie === SAISON_DE_VIE.VETERAN),
+        apply: (ctx) => {
+          const s = ctx.situation;
+          const coach = ctx.world.persons[ctx.team.coachId];
+          const credit = relationValue(ctx.world, ctx.person.id, coach.id);
+          // Le staff accepte de partager si le joueur a du crédit ; sinon il
+          // entend une réticence.
+          if (credit > 5 || s.saisonDeVie === SAISON_DE_VIE.VETERAN) {
+            ctx.person.roleId = ctx.game.roles?.find((r) => r.id === 'igl' || r.id === 'shotcaller')?.id ?? ctx.person.roleId;
+            ctx.fx.attr('leadership', 2).attr('communication', 2);
+            ctx.fx.synergy(4).stress(4).flag('captain', true);
+            ctx.fx.relation(coach.id, 6, 'Il a pris le rôle en posant ses conditions.');
+            ctx.fx.log('Devient meneur de jeu, la charge partagée.', { kind: 'team', important: true });
+            return 'Vous acceptez, à condition qu’un autre prenne la préparation. Le staff trouve cela raisonnable.';
+          }
+          ctx.fx.relation(coach.id, -5, 'Il a posé des conditions pour un rôle qu’on lui offrait.');
+          ctx.fx.morale(-4);
+          return 'Vous posez vos conditions. Le staff préfère chercher quelqu’un d’autre.';
         },
       },
       {
         id: 'decline',
         label: 'Refuser',
+        hint: (ctx) => selon(ctx.situation.aBout, 'Vous protéger, pendant qu’il en reste', 'Vous préférez jouer'),
         apply: (ctx) => {
-          ctx.fx.stress(-4).morale(2);
+          const s = ctx.situation;
           ctx.fx.log('Refuse le rôle de meneur.', { kind: 'decision' });
+          if (s.aBout) {
+            ctx.fx.stress(-8).morale(3);
+            return 'Vous préférez jouer. On respecte, sans le dire — et vous savez que c’était la bonne décision.';
+          }
+          ctx.fx.stress(-4).morale(2);
           return 'Vous préférez jouer. On respecte, sans le dire.';
         },
       },
