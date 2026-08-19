@@ -420,9 +420,19 @@ test('les PNJ vivent leur propre carrière (progression et déclin)', () => {
   const young = Object.values(world.persons)
     .filter((p) => !p.isPlayer && p.status !== STATUS.STAFF && personAge(p, world.week) < 21)
     .slice(0, 30);
+  // On échantillonne TOUS les vétérans disponibles, pas les trente premiers.
+  //
+  // La version précédente en prenait 30 et exigeait 5 survivants après six ans.
+  // Or six ans plus tard, la plupart ont pris leur retraite et `pruneWorld` les
+  // a oubliés : mesuré sur douze graines, le nombre de survivants va de 3 à 14.
+  // Le seuil de 5 était donc frôlé par construction, et n'importe quel
+  // changement en amont — y compris une modification des décisions du joueur,
+  // qui déplace la consommation d'aléatoire — le faisait basculer d'un côté ou
+  // de l'autre sans que le vieillissement des PNJ ait changé. Le vivier compte
+  // 65 à 69 vétérans : le prendre en entier rend la précondition stable sans
+  // affaiblir ce que le test vérifie réellement.
   const veterans = Object.values(world.persons)
-    .filter((p) => !p.isPlayer && p.status !== STATUS.STAFF && personAge(p, world.week) >= 25)
-    .slice(0, 30);
+    .filter((p) => !p.isPlayer && p.status !== STATUS.STAFF && personAge(p, world.week) >= 25);
   const sample = [...young, ...veterans].map((p) => ({
     id: p.id,
     rating: baseRating(p, GAMES_BY_ID[p.gameId]),
@@ -448,7 +458,11 @@ test('les PNJ vivent leur propre carrière (progression et déclin)', () => {
     }
   }
   assert.ok(improved > 3, `les jeunes PNJ doivent progresser (${improved})`);
-  assert.ok(vetsSeen >= 5, `trop peu de vétérans survivants pour juger (${vetsSeen})`);
+  // Cinq survivants suffisent à juger d'une tendance ; c'est le seuil d'origine.
+  // Ce qui change, c'est qu'il porte maintenant sur le vivier entier. Mesuré,
+  // environ 12 % des joueurs de 25 ans et plus sont encore en mémoire six ans
+  // plus tard : 8 sur 65 au lieu de 4 sur 30. Le seuil n'est plus frôlé.
+  assert.ok(vetsSeen >= 5, `trop peu de vétérans survivants pour juger (${vetsSeen} sur ${sample.filter((e) => e.veteran).length} échantillonnés)`);
 
   // Le vieillissement se mesure par l'écart au PIC, non par la variation depuis
   // un instant arbitraire. Échantillonner « 25 ans et plus » attrape des
