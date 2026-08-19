@@ -718,7 +718,14 @@ export const teamLifeEvents = [
     tags: ['équipe', 'transfert'],
     cooldown: 30,
     condition: (ctx) => ctx.hasTeam && teammates(ctx).length > 0 && ctx.isTransferWindow,
-    weight: () => 4,
+    // Un départ se raconte d'autant plus qu'il y a quelque chose à perdre : une
+    // équipe soudée, ou un vestiaire déjà instable. Un groupe tiède ne produit
+    // pas de scène.
+    weight: (ctx) => {
+      const synergie = ctx.team?.synergy ?? 50;
+      const enjeu = Math.abs(synergie - 50) / 25;
+      return clamp(2.5 + enjeu * 2.5 + (ctx.situation.surLeBanc ? 1 : 0), 1, 7);
+    },
     title: 'Un départ',
     text: (ctx) => {
       const mate = ctx.rng.weighted(teammates(ctx), (m) => 1 + Math.abs(relationValue(ctx.world, ctx.person.id, m.id)) * 0.05);

@@ -10,6 +10,7 @@ import { collectOffers, signPlayer, evaluateInterest } from '../../transfers.js'
 import { STATUS, weightedCeiling } from '../../person.js';
 import { teamNeeds } from '../../team.js';
 import { selon, VISIBILITE, SAISON_DE_VIE, PLACE } from '../situation.js';
+import { clamp } from '../../rng.js';
 
 /** Équipes de la scène du joueur qui cherchent réellement quelqu'un. */
 function teamsLookingFor(ctx, { maxTier = 5, minTier = 1 } = {}) {
@@ -34,7 +35,9 @@ export const earlyCareerEvents = [
     once: true,
     cooldown: 999,
     condition: (ctx) => !ctx.hasTeam && ctx.career.counters.weeks < 20,
-    weight: () => 8,
+    // Cette scène raconte les premières semaines : plus on avance dans la
+    // fenêtre sans qu'elle soit arrivée, moins elle a de sens à être racontée.
+    weight: (ctx) => clamp(9 - ctx.career.counters.weeks * 0.35, 1, 9),
     title: 'Les premières heures',
     text: (ctx) => {
       const s = ctx.situation;

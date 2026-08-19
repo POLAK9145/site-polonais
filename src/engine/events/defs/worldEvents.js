@@ -389,7 +389,13 @@ export const worldEvents = [
     tags: ['équipe', 'argent'],
     cooldown: 60,
     condition: (ctx) => ctx.hasTeam && !!ctx.org && ctx.org.budget < ctx.org.yearlyIncome * 0.15,
-    weight: () => 7,
+    // Une organisation qui vacille inquiète d'autant plus qu'on y est installé
+    // et qu'on en dépend. Un joueur sans salaire chez elle a moins à perdre.
+    weight: (ctx) => {
+      const attache = ctx.situation.estTitulaire ? 2.5 : 1;
+      const dependance = ctx.person.contract?.salary > 0 ? 2.5 : 0.5;
+      return clamp(3 + attache + dependance, 2, 9);
+    },
     title: 'Des retards de paiement',
     text: (ctx) =>
       `Le salaire n'est pas tombé. Le manager parle d'un « décalage administratif ». Deux joueurs disent la même chose que vous : ce n'est pas la première fois.`,
