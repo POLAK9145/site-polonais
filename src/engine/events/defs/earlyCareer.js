@@ -96,8 +96,13 @@ export const earlyCareerEvents = [
     condition: (ctx) => !ctx.hasTeam && ctx.rating > 38,
     weight: (ctx) => 6 + (ctx.person.reputation.community > 15 ? 3 : 0),
     title: 'Un tournoi local',
-    text: () =>
-      `Un tournoi ouvert se tient ce week-end. Petite salle, petit lot, quelques dizaines de participants. Rien d'important — sauf que tout le monde a commencé quelque part.`,
+    text: (ctx) => {
+      const base = `Un tournoi ouvert se tient ce week-end. Petite salle, petit lot, quelques dizaines de participants. Rien d'important — sauf que tout le monde a commencé quelque part.`;
+      // Le passé colore ce qu'on voit dans une salle à moitié vide (étape 7D).
+      if (ctx.situation.aRateUnEssai) return `${base} La dernière fois qu'on vous a regardé jouer, ça s'est mal terminé.`;
+      if (ctx.situation.aUnReseau) return `${base} Vous reconnaissez déjà trois pseudos dans la liste des inscrits.`;
+      return base;
+    },
     choices: [
       {
         id: 'go',
@@ -376,6 +381,10 @@ export const earlyCareerEvents = [
       // en pense dépend d'où il est assis, et il le sait très bien.
       if (s.surLeBanc) return `${base} Vous, vous n’avez pas joué depuis des semaines. Ailleurs, peut-être que si.`;
       if (s.sansEquipe) return `${base} Vous n’avez rien à quitter. C’est presque un avantage.`;
+      // Ce qu'on a à perdre ne se mesure pas qu'en temps de jeu (étape 7D).
+      if (s.vestiaireHostile) return `${base} Vous n’avez plus grand-chose à sauver dans ce vestiaire.`;
+      if (s.isoleDansEquipe) return `${base} Vous regardez la liste des noms. Aucun ne vous retiendrait vraiment.`;
+      if (s.alliesDansEquipe >= 2) return `${base} Partir voudrait dire laisser des gens derrière.`;
       if (s.aBout) return `${base} Changer de structure maintenant voudrait dire tout recommencer, avec ce qu’il vous reste d’énergie.`;
       return base;
     },
@@ -383,12 +392,13 @@ export const earlyCareerEvents = [
       {
         id: 'listen',
         label: (ctx) => selon(ctx.situation.surLeBanc, 'Chercher du temps de jeu ailleurs', 'Écouter le marché'),
-        hint: (ctx) =>
-          selon(
-            ctx.situation.visibilite === VISIBILITE.INCONNU,
-            'Peu de gens savent qui vous êtes',
-            'Voir ce qui existe',
-          ),
+        hint: (ctx) => {
+          const s = ctx.situation;
+          // Un échec passé change la façon d'aborder le marché (étape 7D).
+          if (s.aEteRefuse) return 'Vous savez déjà ce que ça fait, un silence qui dure';
+          if (s.aUnReseau) return 'Vous connaissez du monde. Ça aide, un peu';
+          return selon(s.visibilite === VISIBILITE.INCONNU, 'Peu de gens savent qui vous êtes', 'Voir ce qui existe');
+        },
         apply: (ctx) => {
           const s = ctx.situation;
           // Un joueur qui ne joue pas se vend moins bien, mais il est prêt à
@@ -413,7 +423,10 @@ export const earlyCareerEvents = [
         // On ne peut vouloir rester que si l'on est quelque part, et cela n'a de
         // sens que pour un joueur installé — un remplaçant qui demande à rester
         // demande à ne pas jouer.
-        available: (ctx) => ctx.situation.estTitulaire,
+        // On ne demande à rester que si l'on est installé, et qu'il reste
+        // quelque chose à quoi tenir : un titulaire isolé dans un vestiaire
+        // qui ne l'aime pas ne réclame pas sa prolongation (étape 7D).
+        available: (ctx) => ctx.situation.estTitulaire && !ctx.situation.vestiaireHostile,
         apply: (ctx) => {
           const s = ctx.situation;
           ctx.career.offers = [];
@@ -424,6 +437,12 @@ export const earlyCareerEvents = [
           if (s.saisonDeVie === SAISON_DE_VIE.VETERAN) {
             ctx.fx.morale(7).stress(-5);
             return 'Vous dites que vous restez. Le staff est soulagé, et vous aussi.';
+          }
+          // Rester auprès de gens qu'on apprécie n'est pas le même choix que
+          // rester par défaut.
+          if (s.alliesDansEquipe >= 2) {
+            ctx.fx.morale(6);
+            return 'Vous dites que vous restez. Deux ou trois personnes vous tapent dans le dos en sortant.';
           }
           ctx.fx.morale(3).rep('pros', 1);
           return 'Vous dites que vous restez. Le staff est soulagé. Vous vous demandez ce que vous auriez pu obtenir.';

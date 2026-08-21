@@ -25,6 +25,7 @@
  */
 
 import { LOAD_STATES, isHigh } from '../load.js';
+import { relationsOf, REL_TAGS, relationValue } from '../relations.js';
 
 /** Places possibles dans un effectif, du point de vue du joueur. */
 export const PLACE = {
@@ -142,6 +143,93 @@ export function situationOf(ctx) {
     // --- Palmarès, tel qu'il le vit ---
     aDejaGagne: (person.stats?.titles ?? 0) > 0,
     saisonsPro: person.stats?.seasonsPro ?? 0,
+
+    // --- Ce qu'il sait de ses relations (étape 7D) ---
+    //
+    // Un joueur sait avec qui il s'entend, qui il ne supporte plus, s'il est
+    // seul dans son vestiaire. Il ne connaît pas les valeurs numériques, et ces
+    // champs n'en exposent aucune : seulement des faits qu'il pourrait énoncer.
+    ...socialOf(ctx),
+
+    // --- Ce dont il se souvient (étape 7D) ---
+    ...pastOf(ctx),
+  };
+}
+
+/**
+ * Ce que le joueur perçoit de sa vie sociale.
+ *
+ * Séparé pour rester lisible, et parce que c'est la partie la plus facile à
+ * détourner : il serait tentant d'exposer ici « la meilleure relation
+ * disponible » ou « le coéquipier le plus utile ». On s'en tient à ce qui se
+ * ressent — j'ai un proche ici, je ne supporte plus quelqu'un, je suis isolé.
+ */
+function socialOf(ctx) {
+  const { world, person, team } = ctx;
+  const rels = relationsOf(world, person.id, { minAbs: 0 });
+  const proches = rels.filter((r) => r.value >= 45);
+  const hostiles = rels.filter((r) => r.value <= -45);
+
+  // Dans l'équipe actuelle, précisément : c'est ce qui pèse au quotidien.
+  const equipe = team ? [...(team.roster ?? []), ...(team.subs ?? [])].filter((id) => id !== person.id) : [];
+  const alliesIci = equipe.filter((id) => relationValue(world, person.id, id) >= 35);
+  const tensionsIci = equipe.filter((id) => relationValue(world, person.id, id) <= -35);
+
+  return {
+    /** Des gens à qui l'on tient, où qu'ils soient aujourd'hui. */
+    aDesProches: proches.length > 0,
+    nbProches: proches.length,
+    /** Des gens avec qui c'est cassé. */
+    aDesEnnemis: hostiles.length > 0,
+    nbEnnemis: hostiles.length,
+    /** Dans le vestiaire d'aujourd'hui. */
+    alliesDansEquipe: alliesIci.length,
+    tensionsDansEquipe: tensionsIci.length,
+    /** Personne sur qui compter là où l'on joue. */
+    isoleDansEquipe: equipe.length > 0 && alliesIci.length === 0,
+    /** Un vestiaire franchement contre soi. */
+    vestiaireHostile: tensionsIci.length >= 2,
+    /** A-t-on un mentor, a-t-on formé quelqu'un ? */
+    aUnMentor: rels.some((r) => r.tags.includes(REL_TAGS.MENTOR)),
+    aFormeQuelquun: rels.some((r) => r.tags.includes(REL_TAGS.PROTEGE)),
+    /** Une rivalité déclarée, quelle qu'en soit la couleur. */
+    aUneRivalite: rels.some((r) => r.tags.includes(REL_TAGS.RIVAL)),
+  };
+}
+
+/**
+ * Ce dont le joueur se souvient de sa propre carrière.
+ *
+ * Au diagnostic, 26 drapeaux sur 28 n'étaient jamais relus, et `timeline` comme
+ * `memories` n'étaient consultées que par le bilan de fin. Le monde enregistrait
+ * qu'on avait raté un essai, demandé son transfert ou porté le brassard, et n'y
+ * faisait plus jamais référence. Ces champs rendent ce passé consultable par les
+ * décisions, sous une forme que le joueur reconnaîtrait.
+ */
+function pastOf(ctx) {
+  const { career } = ctx;
+  const f = career.flags ?? {};
+  const marquants = (career.timeline ?? []).filter((t) => t.important);
+  return {
+    /** Des échecs dont on se souvient. */
+    aRateUnEssai: !!f.failed_tryout,
+    aEteRefuse: !!f.failed_tryout || !!f.negotiation_failed,
+    /** Des choix de trajectoire déjà faits. */
+    aDemandeUnTransfert: !!f.requested_transfer,
+    aEteSurLeBanc: !!f.benched,
+    aEteCapitaine: !!f.captain,
+    /** Ce qu'on a construit ailleurs que dans le jeu. */
+    aUneVieAcote: !!f.content_career || !!f.hybrid_career || !!f.side_job,
+    aChoisiLaRigueur: !!f.structured,
+    aChoisiLeGrind: !!f.grinder,
+    aUnReseau: !!f.networked,
+    /** Ce que le corps a déjà connu. */
+    aConnuLaRupture: !!f.had_burnout,
+    /** L'idée d'arrêter a déjà traversé. */
+    aPenseArreter: !!f.thinking_retirement || !!f.considering_exit,
+    /** Combien de moments on garderait d'une carrière. */
+    momentsMarquants: marquants.length,
+    aUnPasse: marquants.length >= 3,
   };
 }
 

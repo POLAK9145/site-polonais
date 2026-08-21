@@ -387,6 +387,8 @@ export const teamLifeEvents = [
 
   {
     id: 'benched',
+    // Étape 7D : se retrouver sur le banc n'a pas le même goût selon qu'on a
+    // des alliés dans le groupe ou qu'on y est déjà seul.
     tags: ['équipe', 'compétition'],
     cooldown: 60,
     condition: (ctx) => {
@@ -405,6 +407,11 @@ export const teamLifeEvents = [
       // Un joueur épuisé entend autre chose dans la même phrase.
       if (s.aBout) return `${base} Une partie de vous, celle qui n’a pas dormi depuis trois mois, est presque soulagée.`;
       if (s.saisonDeVie === SAISON_DE_VIE.VETERAN) return `${base} Vous connaissez la suite : ça commence comme ça.`;
+      // Être écarté devant des gens qui vous apprécient, ou devant des gens qui
+      // attendaient ça, ce n'est pas la même humiliation (étape 7D).
+      if (s.vestiaireHostile) return `${base} Deux ou trois personnes dans ce vestiaire attendaient exactement ça.`;
+      if (s.alliesDansEquipe >= 2) return `${base} Vos proches dans le groupe évitent votre regard.`;
+      if (s.aEteSurLeBanc) return `${base} Vous êtes déjà passé par là. Vous savez ce que ça coûte de revenir.`;
       return base;
     },
     choices: [
@@ -607,6 +614,11 @@ export const teamLifeEvents = [
       // Ce que le joueur pèse dépend de ce qu'il vit, et il le sait sans qu'on
       // ait besoin de le lui apprendre.
       if (s.surLeBanc) return `${base} Difficile de réclamer quoi que ce soit quand on n’a pas joué depuis des semaines.`;
+      // Ce qui s'est déjà passé entre vous et cette structure pèse sur la
+      // conversation, et les deux camps s'en souviennent (étape 7D).
+      if (s.aDemandeUnTransfert) return `${base} Vous avez demandé à partir, une fois. Personne ne l’a oublié.`;
+      if (s.vestiaireHostile) return `${base} Une partie du vestiaire ne vous regrettera pas.`;
+      if (s.aChoisiLaRigueur) return `${base} Vous arrivez avec vos notes, vos chiffres, vos objectifs tenus.`;
       if (s.saisonDeVie === SAISON_DE_VIE.VETERAN) return `${base} À votre âge, ce n’est plus le montant qui compte le plus.`;
       if (s.aBout) return `${base} L’idée de repartir de zéro ailleurs vous épuise d’avance.`;
       return base;
@@ -731,7 +743,10 @@ export const teamLifeEvents = [
     weight: (ctx) => {
       const synergie = ctx.team?.synergy ?? 50;
       const enjeu = Math.abs(synergie - 50) / 25;
-      return clamp(2.5 + enjeu * 2.5 + (ctx.situation.surLeBanc ? 1 : 0), 1, 7);
+      // Un départ compte davantage quand il reste peu de monde à qui l'on
+      // tient : c'est la mémoire sociale qui donne son poids à la scène.
+      const attachement = ctx.situation.alliesDansEquipe > 0 ? 1.5 : 0;
+      return clamp(2.5 + enjeu * 2.5 + (ctx.situation.surLeBanc ? 1 : 0) + attachement, 1, 8);
     },
     title: 'Un départ',
     text: (ctx) => {

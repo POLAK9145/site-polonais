@@ -296,6 +296,7 @@ export const worldEvents = [
 
   {
     id: 'game_switch_offer',
+    // Étape 7D : changer de jeu, c'est aussi laisser des gens derrière.
     tags: ['jeu', 'transfert'],
     cooldown: 90,
     condition: (ctx) => ctx.person.status !== STATUS.RETIRED && ctx.career.counters.weeks > 30,
@@ -386,6 +387,7 @@ export const worldEvents = [
   // --- LE MONDE BOUGE --------------------------------------------------
   {
     id: 'org_in_trouble',
+    // Étape 7D : ce qu'on hésite à quitter dépend de qui l'on y laisse.
     tags: ['équipe', 'argent'],
     cooldown: 60,
     condition: (ctx) => ctx.hasTeam && !!ctx.org && ctx.org.budget < ctx.org.yearlyIncome * 0.15,
@@ -465,6 +467,10 @@ export const worldEvents = [
       const base = `${kid.nick}, ${Math.floor(personAge(kid, ctx.world.week))} ans, arrive dans la scène. Tout le monde parle de lui. Vous vous souvenez d'avoir été ce joueur-là.`;
       if (s.surLeBanc) return `${base} On parle déjà de lui pour votre poste.`;
       if (s.aBout) return `${base} Il a l’énergie que vous aviez. Vous ne l’avez plus.`;
+      // Avoir déjà transmis, ou avoir porté le groupe, change ce qu'on voit
+      // arriver en face (étape 7D).
+      if (s.aFormeQuelquun) return `${base} Vous savez déjà ce que ça fait, de voir quelqu’un vous dépasser. Vous l’avez aidé.`;
+      if (s.aEteCapitaine) return `${base} On vous a confié un groupe, autrefois. Personne ne vous l’a proposé cette année.`;
       return base;
     },
     choices: [
@@ -513,6 +519,7 @@ export const worldEvents = [
   // --- FIN DE CARRIÈRE -------------------------------------------------
   {
     id: 'decline_realization',
+    // Étape 7D : accepter son déclin dépend de ce qu'on a déjà traversé.
     tags: ['mental', 'compétition'],
     cooldown: 60,
     condition: (ctx) => {
@@ -528,6 +535,9 @@ export const worldEvents = [
       // c'est une distinction qui change complètement la décision.
       if (ctx.situation.aBout) return `${base} Une partie de vous se demande si c’est vraiment l’âge, ou seulement l’état dans lequel vous êtes depuis des mois.`;
       if (s.surLeBanc) return `${base} Le staff, lui, a déjà tranché.`;
+      // Ce qu'on a traversé change la façon de recevoir la nouvelle (7D).
+      if (s.aConnuLaRupture) return `${base} Vous avez déjà cru que c’était fini une fois. Vous savez que ça peut ne pas l’être.`;
+      if (s.aFormeQuelquun) return `${base} Vous reconnaissez, chez les plus jeunes, ce que vous étiez.`;
       return base;
     },
     choices: [
@@ -617,6 +627,7 @@ export const worldEvents = [
       return (old && declining) || stuck || (done && ctx.age > 24);
     },
     weight: (ctx) => clamp((ctx.age - 25) * 1.1 + (ctx.career.flags.thinking_retirement ? 4 : 0), 0, 12),
+    // Étape 7D : ce qu'on a déjà traversé pèse sur l'idée d'arrêter.
     title: 'La question',
     text: (ctx) => {
       const s = ctx.situation;

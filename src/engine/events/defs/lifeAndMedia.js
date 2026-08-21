@@ -214,6 +214,9 @@ export const lifeAndMediaEvents = [
       if (s.aBout) return `${base} Il faudrait enchaîner, capitaliser, publier. Vous n’en avez pas la force cette semaine.`;
       if (s.enDifficulte) return `${base} L’ironie ne vous échappe pas : vous n’avez jamais aussi mal joué.`;
       if (s.visibilite === VISIBILITE.INCONNU) return `${base} C’est la première fois que des inconnus parlent de vous.`;
+      // Un clip ne se vit pas pareil selon qui est autour (étape 7D).
+      if (s.isoleDansEquipe) return `${base} Personne dans le vestiaire ne vous en parle.`;
+      if (s.alliesDansEquipe >= 2) return `${base} Vos coéquipiers vous charrient toute la semaine avec.`;
       return base;
     },
     choices: [
@@ -371,7 +374,11 @@ export const lifeAndMediaEvents = [
           selon(
             ctx.situation.fauche,
             'Votre communauté approuvera. Votre loyer, moins',
-            'Votre communauté remarquera que vous ne vendez pas n’importe quoi',
+            selon(
+              ctx.situation.aUneVieAcote,
+              'Vous avez déjà de quoi vivre ailleurs',
+              'Votre communauté remarquera que vous ne vendez pas n’importe quoi',
+            ),
           ),
         apply: (ctx) => {
           const s = ctx.situation;
@@ -546,7 +553,7 @@ export const lifeAndMediaEvents = [
       },
       {
         id: 'borrow',
-        label: 'Demander de l’aide',
+        label: (ctx) => selon(ctx.situation.aDesProches, 'Demander de l’aide autour de vous', 'Demander de l’aide'),
         hint: 'On vous dépannera. Il faudra le rendre, d’une façon ou d’une autre',
         available: (ctx) => (family(ctx)?.support ?? 0) > 0.35,
         apply: (ctx) => {
@@ -610,6 +617,8 @@ export const lifeAndMediaEvents = [
 
   {
     id: 'streaming_pivot',
+    // Étape 7D : bifurquer vers le contenu n'est pas le même pas selon qu'on
+    // a déjà construit quelque chose à côté ou qu'on part de rien.
     tags: ['média', 'argent'],
     cooldown: 80,
     condition: (ctx) => ctx.person.followers > 40000 && ctx.person.reputation.public > 25,
@@ -622,6 +631,9 @@ export const lifeAndMediaEvents = [
       if (s.aBout) return `${base} Une carrière sans classement, sans review, sans lundi matin. L’idée vous traverse plus longtemps que vous ne l’auriez cru.`;
       if (s.surLeBanc) return `${base} De toute façon, vous ne jouez pas.`;
       if (s.fauche) return `${base} C’est plus que vous n’avez gagné en deux ans.`;
+      // Ce qu'on a déjà bâti à côté, et ce qu'on laisserait derrière (7D).
+      if (s.aUneVieAcote) return `${base} Vous avez déjà un pied dedans. Ce ne serait pas un saut, juste un pas de plus.`;
+      if (s.alliesDansEquipe >= 2) return `${base} Il faudrait l’annoncer à des gens qui comptent sur vous.`;
       return base;
     },
     choices: [
