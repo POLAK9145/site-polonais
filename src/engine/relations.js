@@ -144,6 +144,27 @@ function socleDe(rel) {
 }
 
 /**
+ * Ce qu'une rupture interdit de réparer par la simple routine.
+ *
+ * Sans ce plafond, la cohabitation annulait les conflits : un affrontement
+ * ouvert coûtait -22, puis la convergence vers la cible positive du vestiaire
+ * le remontait de neuf points par an et l'effaçait en trois saisons. Mesuré, le
+ * saboteur — qui choisit systématiquement l'option la plus destructrice —
+ * terminait avec 0 relation hostile, exactement comme le joueur le plus
+ * conciliant. Se comporter mal ne coûtait socialement rien.
+ *
+ * Partager un vestiaire ne répare pas ce qui a été cassé publiquement. Seul un
+ * geste explicite le peut : les événements de réconciliation appellent
+ * `adjustRelation` directement et ne passent donc pas par ce plafond.
+ */
+const PLAFOND_APRES_RUPTURE = -12;
+
+function plafondDe(rel) {
+  const rupture = rel.history.some((h) => h.important && (h.delta ?? 0) <= -12);
+  return rupture ? PLAFOND_APRES_RUPTURE : 100;
+}
+
+/**
  * Vitesse à laquelle la vie commune rapproche — ou éloigne — deux coéquipiers.
  *
  * Étape 7D. Mesuré au diagnostic, une relation n'avait que **2 entrées
@@ -209,7 +230,7 @@ export function decayRelations(world, weeks = 1) {
       // Étiquette obsolète : les deux ne jouent plus ensemble mais personne
       // n'a appelé `endTeammateBond`. On laisse l'érosion ordinaire faire.
       if (team) {
-        const target = cohabitationTarget(world, team, a, b);
+        const target = Math.min(cohabitationTarget(world, team, a, b), plafondDe(rel));
         const step = COHABITATION * weeks;
         const ecart = target - rel.value;
         rel.value = Math.abs(ecart) <= step ? target : rel.value + Math.sign(ecart) * step;
