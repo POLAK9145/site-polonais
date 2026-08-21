@@ -183,6 +183,21 @@ function plafondDe(rel) {
 const COHABITATION = 0.18;
 
 /**
+ * DETTE ASSUMÉE (étape 7D, validée telle quelle).
+ *
+ * Relevé pendant la carrière — et non à la retraite, où l'érosion a déjà tourné
+ * des années — un joueur atteint 1,8 amitié forte simultanée en moyenne, jusqu'à
+ * 4, et 14 carrières sur 18 en connaissent au moins une. La cible discutée était
+ * de 3.
+ *
+ * L'écart ne sera pas comblé, et le facteur limitant est connu : le passage
+ * médian en équipe dure **un an**. Cette mobilité découle du marché (étape 4) et
+ * de la profondeur d'effectif (étape 5), tous deux validés. Allonger
+ * artificiellement la durée des liens ou en gonfler l'intensité pour satisfaire
+ * la métrique contredirait ce que le monde raconte par ailleurs.
+ */
+
+/**
  * Vers quoi tend une relation entre deux coéquipiers de CE groupe.
  *
  * Deux termes, et le second est indispensable. Le climat du vestiaire donne la
