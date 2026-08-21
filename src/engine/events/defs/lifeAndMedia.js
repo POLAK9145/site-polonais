@@ -173,6 +173,31 @@ export const lifeAndMediaEvents = [
   // --- MÉDIAS ET AUDIENCE ---------------------------------------------
   {
     id: 'viral_moment',
+    /**
+     * DETTE DE CALIBRATION (étape 7C, assumée et non corrigée).
+     *
+     * L'ajout de `frame` a fait passer cette décision de deux à trois options.
+     * `frame` rapporte beaucoup moins d'abonnés que `ride` — c'est voulu,
+     * expliquer une action posément ne fait pas les vues d'un clip — mais une
+     * politique qui choisit au hasard la prend désormais un tiers du temps.
+     * Comme cette décision est la plus fréquente du catalogue (11,6 fois par
+     * carrière), l'effet est visible à l'échelle du baseline. Relevé sur les
+     * 1400 carrières, 7B → 7C :
+     *
+     *     audience médiane   115 978 → 99 569   (-14 %)
+     *     titres moyens         0,56 → 0,50     (-11 %)
+     *     part arrivée au pro  0,403 → 0,369    (-8 %)
+     *
+     * Ce n'est pas une dégradation du système d'audience : les grandeurs du
+     * monde et les trajectoires de PNJ sont rigoureusement identiques entre les
+     * deux relevés, et aucune propriété gardée ne régresse. C'est l'effet
+     * mécanique d'un menu élargi sur une décision très fréquente.
+     *
+     * Il ne faut PAS gonfler le rendement de `frame` pour restaurer ces
+     * chiffres : ce serait payer une option pour ce qu'elle rapporte au
+     * baseline et non pour ce qu'elle représente. Si ces niveaux doivent
+     * remonter, cela se réglera dans le système d'audience lui-même.
+     */
     tags: ['média', 'communauté'],
     cooldown: 50,
     condition: (ctx) => ctx.person.stats.matches > 5 && ctx.person.reputation.public > 4,
