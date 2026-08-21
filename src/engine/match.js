@@ -16,6 +16,7 @@ import { teamStrength, rosterPersons, teamGame, coachQuality } from './team.js';
 import { mods, effectiveRating } from './person.js';
 import { metaFit } from './meta.js';
 import { recordMatchDrama } from './scene.js';
+import { adjustRelation, REL_TAGS } from './relations.js';
 
 const LOGISTIC_K = 6.5;
 
@@ -232,6 +233,8 @@ function applyMatchOutcome(world, result, teamA, teamB, rng) {
     }
   }
 
+  applySharedExperience(world, result, teamA, teamB);
+
   for (const [team, won] of [
     [teamA, result.winnerId === teamA.id],
     [teamB, result.winnerId === teamB.id],
@@ -250,6 +253,58 @@ function applyMatchOutcome(world, result, teamA, teamB, rng) {
     } else {
       team.season.losses++;
     }
+  }
+}
+
+/**
+ * Ce qu'un match laisse entre coéquipiers (étape 7D).
+ *
+ * Gagner ensemble rapproche, perdre ensemble use, et une déroute sur un enjeu
+ * important use davantage. C'est la source d'alimentation qui manquait : au
+ * diagnostic, une relation recevait +6 à la signature puis plus rien, et son pic
+ * médian sur toute une carrière valait 10 points sur une échelle de 200.
+ *
+ * Deux précautions. D'abord les montants sont **minuscules** — un match ne
+ * refait pas une amitié, c'est leur accumulation sur des centaines de matchs qui
+ * compte. Ensuite **rien n'est journalisé ici** : `adjustRelation` n'écrit dans
+ * l'historique que si on lui passe un texte, et vingt matchs par an pendant
+ * quinze ans rempliraient l'historique de lignes sans intérêt. L'historique
+ * reste réservé aux moments qu'on raconterait vraiment.
+ *
+ * Restreint au joueur : le graphe de relations est centré sur lui — 97 relations
+ * dans tout le monde après dix ans — et l'étendre à tous les PNJ reviendrait à
+ * stocker un produit cartésien que ce module refuse par conception.
+ */
+function applySharedExperience(world, result, teamA, teamB) {
+  const playerId = world.playerId;
+  if (!playerId) return;
+  const team = [teamA, teamB].find((t) => t.roster?.includes(playerId) || t.subs?.includes(playerId));
+  if (!team) return;
+  const joue = result.perfs.some((p) => p.personId === playerId);
+  if (!joue) return;
+
+  const gagne = result.winnerId === team.id;
+  const perf = result.perfs.find((p) => p.personId === playerId);
+  const intensite = 0.4 + result.stakes;
+
+  for (const mate of [...(team.roster ?? []), ...(team.subs ?? [])]) {
+    if (mate === playerId) continue;
+    if (!world.persons[mate]) continue;
+    const leur = result.perfs.find((p) => p.personId === mate);
+    let delta = gagne ? 0.22 * intensite : -0.09 * intensite;
+    // Porter l'équipe quand elle perd, ou couler quand elle gagne, se remarque.
+    if (leur && perf) {
+      const ecart = (leur.score ?? 6) - (perf.score ?? 6);
+      if (!gagne && ecart > 2.5) delta -= 0.12 * intensite;
+      if (!gagne && ecart < -2.5) delta += 0.08 * intensite;
+    }
+    // L'étiquette est indispensable, pas décorative : c'est elle qui fait entrer
+    // la relation dans le régime de cohabitation de `decayRelations`. Sans elle,
+    // une relation née d'un match partagé était traitée comme une connaissance
+    // lointaine et s'érodait vers zéro — mesuré, un joueur avec quatre
+    // coéquipiers n'avait qu'UNE relation étiquetée `teammate`, et la vie
+    // commune ne produisait donc rien pour les trois autres.
+    adjustRelation(world, playerId, mate, delta, { week: world.week, tag: REL_TAGS.TEAMMATE });
   }
 }
 

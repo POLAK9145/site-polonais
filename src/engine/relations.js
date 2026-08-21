@@ -98,7 +98,7 @@ export function removeTag(rel, tag) {
 }
 
 /** Les tags d'affection découlent de la valeur ; les tags factuels non. */
-function refreshDerivedTags(rel) {
+export function refreshDerivedTags(rel) {
   removeTag(rel, REL_TAGS.FRIEND);
   removeTag(rel, REL_TAGS.ENEMY);
   if (rel.value >= 55) addTag(rel, REL_TAGS.FRIEND);
@@ -114,12 +114,119 @@ export function endTeammateBond(world, a, b, week) {
   rel.history.push({ week, text: 'Vos routes se séparent.', delta: 0, important: false });
 }
 
-/** Érosion lente des relations qu'on n'entretient plus. */
+/**
+ * Érosion des liens qu'on n'entretient plus, **proportionnelle** et par semaine.
+ *
+ * La version précédente retranchait 0,05 point par semaine quel que soit le
+ * lien. Sur une carrière de vingt ans cela fait 52 points : n'importe quelle
+ * amitié, si forte fût-elle, revenait exactement à zéro et y restait. Mesuré,
+ * la valeur médiane d'un ancien coéquipier était de 0 et la moitié des relations
+ * d'une carrière finissaient classées « Neutre ».
+ *
+ * Une érosion proportionnelle décroît vite au début et de plus en plus lentement
+ * : un lien de 60 tombe à 21 en cinq ans, à 7 en dix, sans jamais s'annuler tout
+ * à fait. C'est ce qu'on veut — on perd de vue, on n'efface pas.
+ */
+const EROSION = 0.004;
+
+/**
+ * Ce qu'on n'oublie pas.
+ *
+ * Une relation qui a connu un moment marquant — un titre gagné ensemble, une
+ * trahison — garde un socle même après des années sans contact. Sans ce socle,
+ * l'érosion proportionnelle finirait quand même par tout aplatir, et « vous avez
+ * gagné un mondial ensemble en 2033 » se lirait à côté d'une relation neutre.
+ */
+const SOCLE_MARQUANT = 15;
+
+function socleDe(rel) {
+  return rel.history.some((h) => h.important) ? SOCLE_MARQUANT : 0;
+}
+
+/**
+ * Vitesse à laquelle la vie commune rapproche — ou éloigne — deux coéquipiers.
+ *
+ * Étape 7D. Mesuré au diagnostic, une relation n'avait que **2 entrées
+ * d'historique en médiane** et un pic de **10** sur une échelle de -100 à +100 :
+ * signer donnait +6 par coéquipier, et plus rien ne se produisait ensuite. Les
+ * relations existaient sans jamais devenir quoi que ce soit — 55 % finissaient
+ * classées « Neutre ».
+ *
+ * Partager un quotidien pendant des années doit produire quelque chose. Mais
+ * pas mécaniquement de l'amitié : ce que cela produit dépend du climat du
+ * groupe. C'est pourquoi la cible dérive de la synergie de l'équipe — un
+ * vestiaire soudé rapproche, un vestiaire pourri dresse les gens les uns contre
+ * les autres. Le même mécanisme fabrique donc les amitiés et les inimitiés,
+ * sans qu'aucun événement n'ait à s'en charger.
+ */
+const COHABITATION = 0.18;
+
+/**
+ * Vers quoi tend une relation entre deux coéquipiers de CE groupe.
+ *
+ * Deux termes, et le second est indispensable. Le climat du vestiaire donne la
+ * base : mesurée, la synergie des équipes a une médiane de 54, un p25 de 43 et
+ * un p75 de 65, donc c'est autour de 54 qu'il faut centrer — une première
+ * version centrée sur 50 avec un gain de 0,9 ne produisait qu'une cible de +4
+ * au vestiaire médian, soit rien.
+ *
+ * Mais la synergie seule ferait converger TOUS les coéquipiers d'une équipe vers
+ * la même valeur, ce qui remplacerait des relations plates par des relations
+ * identiques. Il faut donc un moteur propre à chaque paire. La concurrence pour
+ * une place en est un, et il est déjà dans le monde : deux joueurs du même poste
+ * se disputent la même place, et celui qui est sur le banc pendant que l'autre
+ * joue le vit forcément moins bien.
+ */
+function cohabitationTarget(world, team, a, b) {
+  // Centré sur 40 et non sur la synergie médiane (54) : passer des années avec
+  // les mêmes personnes doit construire quelque chose par défaut, et c'est le
+  // vestiaire pourri qui doit être l'exception. Centrer sur la médiane donnait
+  // une cible nulle pour la moitié des équipes — la cohabitation ne produisait
+  // alors rien du tout pour un joueur sur deux.
+  let target = clamp((team.synergy - 40) * 1.4, -50, 55);
+  if (a.roleId && a.roleId === b.roleId) {
+    const aTitulaire = !!team.roster?.includes(a.id);
+    const bTitulaire = !!team.roster?.includes(b.id);
+    // Se disputer la place use ; la perdre au profit de l'autre use davantage.
+    target -= aTitulaire === bTitulaire ? 12 : 22;
+  }
+  return clamp(target, -60, 55);
+}
+
+/**
+ * Fait vivre les relations d'une période.
+ *
+ * Deux régimes. Les coéquipiers actuels convergent vers ce que vaut leur
+ * vestiaire ; tous les autres s'érodent vers l'indifférence. Un lien fort
+ * survit donc à une séparation, mais seulement un temps.
+ */
 export function decayRelations(world, weeks = 1) {
   for (const rel of Object.values(world.relations)) {
-    if (rel.tags.includes(REL_TAGS.TEAMMATE)) continue;
-    const pull = rel.value > 0 ? -0.05 : 0.05;
-    rel.value = clamp(rel.value + pull * weeks, -100, 100);
+    if (rel.tags.includes(REL_TAGS.TEAMMATE)) {
+      const a = world.persons[rel.a];
+      const b = world.persons[rel.b];
+      const team = a?.teamId && a.teamId === b?.teamId ? world.teams[a.teamId] : null;
+      // Étiquette obsolète : les deux ne jouent plus ensemble mais personne
+      // n'a appelé `endTeammateBond`. On laisse l'érosion ordinaire faire.
+      if (team) {
+        const target = cohabitationTarget(world, team, a, b);
+        const step = COHABITATION * weeks;
+        const ecart = target - rel.value;
+        rel.value = Math.abs(ecart) <= step ? target : rel.value + Math.sign(ecart) * step;
+        rel.value = clamp(rel.value, -100, 100);
+        // Sans ceci, une relation qui franchit un seuil pendant l'érosion garde
+        // son ancienne étiquette : `friend` survivait à la valeur qui l'avait
+        // justifiée, indéfiniment, parce que `refreshDerivedTags` n'était appelé
+        // que depuis `adjustRelation`.
+        refreshDerivedTags(rel);
+        continue;
+      }
+    }
+    const socle = socleDe(rel);
+    const facteur = (1 - EROSION) ** weeks;
+    if (rel.value > socle) rel.value = Math.max(socle, rel.value * facteur);
+    else if (rel.value < -socle) rel.value = Math.min(-socle, rel.value * facteur);
+    refreshDerivedTags(rel);
   }
 }
 

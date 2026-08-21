@@ -56,7 +56,14 @@ export const teamLifeEvents = [
     weight: (ctx) => 3 + ctx.team.synergy * 0.04,
     title: 'Une entente qui se voit',
     text: (ctx) => {
-      const mate = ctx.rng.pick(teammates(ctx));
+      // On se rapproche de celui dont on est déjà le plus proche, pas d'un
+      // coéquipier tiré au sort (étape 7D). Les conflits visaient déjà la pire
+      // relation via `worstRelation` ; les moments positifs, eux, tiraient au
+      // hasard, si bien que les gains se répartissaient uniformément et
+      // qu'aucune amitié ne se construisait vraiment — mesuré, 0,3 relation
+      // forte par carrière. Concentrer plutôt qu'augmenter : c'est ainsi que se
+      // forment les vraies affinités, et cela ne gonfle aucun total.
+      const mate = bestRelation(ctx).person ?? ctx.rng.pick(teammates(ctx));
       ctx.pickedMate = mate;
       if (!mate) return `Quelque chose fonctionne bien dans le groupe en ce moment.`;
       const s = ctx.situation;
