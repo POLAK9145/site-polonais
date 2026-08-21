@@ -204,7 +204,14 @@ function cohabitationTarget(world, team, a, b) {
   // vestiaire pourri qui doit être l'exception. Centrer sur la médiane donnait
   // une cible nulle pour la moitié des équipes — la cohabitation ne produisait
   // alors rien du tout pour un joueur sur deux.
-  let target = clamp((team.synergy - 40) * 1.4, -50, 55);
+  // Gain 1,8 et non 1,4 : mesuré, rester longtemps produisait bien de meilleurs
+  // liens qu'un parcours nomade — meilleure relation à 42,7 contre 19, avec une
+  // corrélation de 0,347 entre la durée du plus long passage et la relation la
+  // plus forte — mais les liens culminaient dans les 40, juste sous le seuil de
+  // 45 qui fait une relation forte. Cinq ans dans un bon groupe doivent
+  // produire une vraie amitié. Le vestiaire médian, lui, reste modeste : sa
+  // synergie de 54 ne donne qu'une cible de 25.
+  let target = clamp((team.synergy - 40) * 1.8, -55, 62);
   if (a.roleId && a.roleId === b.roleId) {
     const aTitulaire = !!team.roster?.includes(a.id);
     const bTitulaire = !!team.roster?.includes(b.id);
