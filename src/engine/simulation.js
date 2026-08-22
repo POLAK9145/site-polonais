@@ -63,6 +63,7 @@ import { checkAchievements, trackLowPoint } from './achievements.js';
 import { gainFollowers } from './reputation.js';
 import { contextPressure, crashRisk, LOAD_STATES } from './load.js';
 import { situationOf } from './events/situation.js';
+import { rivalryStatus, closeRivalry } from './relations.js';
 import { isTracing, trace, TRACE } from './trace.js';
 
 /** Crée une session complète : monde généré + carrière du joueur. */
@@ -299,6 +300,7 @@ export function advanceWeek(session) {
   maybeSpontaneousCrash(session, report);
 
   // 11. Événement de la semaine.
+  maybeCloseRivalry(session, report);
   maybeFireEvent(session, report);
 
   // 11. Succès.
@@ -685,6 +687,33 @@ function maybeSpontaneousCrash(session, report) {
     });
   }
   return true;
+}
+
+/**
+ * Une rivalité devenue hors sujet doit s'éteindre (étape 7E).
+ *
+ * Une rivalité n'est pas un souvenir, c'est une tension avec quelqu'un qui joue
+ * encore. Quand elle meurt, elle rejoint les rivalités passées — le récit la
+ * garde, le présent la lâche — et une autre pourra naître un an plus tard.
+ */
+function maybeCloseRivalry(session, report) {
+  const { world, career } = session;
+  if (!career.rivalId) return;
+  const person = world.persons[career.personId];
+  const etat = rivalryStatus(world, person, career);
+  if (etat.vivante) return;
+  const nick = etat.rival?.nick ?? 'Votre rival';
+  const entry = closeRivalry(career, world, { raison: etat.raison, week: world.week });
+  if (!entry) return;
+  const phrases = {
+    'retraité': `${nick} a raccroché. Il n'y a plus personne à battre.`,
+    'autre scène': `${nick} joue à autre chose désormais. Vos routes ne se croiseront plus.`,
+    'réconciliée': `Ce que vous aviez avec ${nick} n'est plus une rivalité depuis longtemps.`,
+    'disparu': `On n'entend plus parler de ${nick}.`,
+  };
+  const texte = phrases[etat.raison] ?? `La rivalité avec ${nick} s'est éteinte.`;
+  logTimeline(career, world, texte, { kind: 'rivalry', important: true });
+  report.messages.push(texte);
 }
 
 function maybeFireEvent(session, report) {

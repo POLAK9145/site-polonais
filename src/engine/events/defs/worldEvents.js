@@ -9,7 +9,7 @@
 import { clamp } from '../../rng.js';
 import { GAMES, GAMES_BY_ID, transferRate } from '../../../data/games.js';
 import { baseRating, age as personAge, STATUS, weightedCeiling } from '../../person.js';
-import { relationValue, REL_TAGS } from '../../relations.js';
+import { rivalryStatus, relationValue, REL_TAGS } from '../../relations.js';
 import { releasePlayer } from '../../transfers.js';
 import { selon, VISIBILITE, SAISON_DE_VIE } from '../situation.js';
 import { relieveLoad } from '../../load.js';
@@ -44,9 +44,27 @@ export const worldEvents = [
   {
     id: 'rival_emerges',
     tags: ['rivalité', 'compétition'],
-    once: true,
-    condition: (ctx) => !ctx.career.rivalId && ctx.person.stats.matches > 20 && ctx.rating > 55,
-    weight: (ctx) => clamp((ctx.rating - 52) * 0.2, 0, 7),
+    // `once: true` retiré (étape 7E). Une carrière de vingt ans n'avait qu'un
+    // seul rival, désigné vers l'an 3 quand le joueur était encore un espoir, et
+    // conservé jusqu'au bout — retraité dans quinze cas sur dix-huit. Une
+    // nouvelle rivalité peut naître, mais seulement quand l'ancienne est
+    // réellement morte : c'est `rivalryStatus` qui en juge, sur des faits
+    // vérifiables. On ne remplace jamais une rivalité vivante.
+    cooldown: 120,
+    condition: (ctx) => {
+      if (ctx.person.stats.matches <= 20 || ctx.rating <= 55) return false;
+      if (rivalryStatus(ctx.world, ctx.person, ctx.career).vivante) return false;
+      // Une rivalité qui vient de s'éteindre laisse un temps de latence : on ne
+      // s'invente pas un adversaire la semaine où l'autre raccroche.
+      const derniere = ctx.career.pastRivalries?.at(-1);
+      return !derniere || ctx.world.week - derniere.week >= 52;
+    },
+    weight: (ctx) => {
+      // Une deuxième rivalité est plus rare qu'une première : on n'a pas
+      // l'énergie de tout recommencer aussi souvent.
+      const deja = ctx.career.pastRivalries?.length ?? 0;
+      return clamp((ctx.rating - 52) * 0.2, 0, 7) / (1 + deja * 0.8);
+    },
     title: 'Un nom qui revient',
     text: (ctx) => {
       const rival = rivalCandidate(ctx);
@@ -62,6 +80,7 @@ export const worldEvents = [
           const rival = ctx.pickedRival ?? rivalCandidate(ctx);
           if (!rival) return 'Rien ne se cristallise.';
           ctx.career.rivalId = rival.id;
+          ctx.career.rivalry = { depuis: ctx.world.week, actes: 1 };
           ctx.fx.relation(rival.id, -12, `${rival.nick} devient votre rival déclaré.`, {
             tag: REL_TAGS.RIVAL,
             important: true,
@@ -80,6 +99,7 @@ export const worldEvents = [
           const rival = ctx.pickedRival ?? rivalCandidate(ctx);
           if (rival) {
             ctx.career.rivalId = rival.id;
+            ctx.career.rivalry = { depuis: ctx.world.week, actes: 1 };
             ctx.fx.relation(rival.id, 4, `Respect distant avec ${rival.nick}.`, { tag: REL_TAGS.RIVAL });
           }
           ctx.fx.attr('composure', 1.5);

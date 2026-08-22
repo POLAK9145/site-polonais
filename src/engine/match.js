@@ -16,7 +16,7 @@ import { teamStrength, rosterPersons, teamGame, coachQuality } from './team.js';
 import { mods, effectiveRating } from './person.js';
 import { metaFit } from './meta.js';
 import { recordMatchDrama } from './scene.js';
-import { adjustRelation, REL_TAGS } from './relations.js';
+import { adjustRelation, hasTag, REL_TAGS } from './relations.js';
 
 const LOGISTIC_K = 6.5;
 
@@ -124,8 +124,8 @@ export function simulateMatch(world, opts, rng) {
   const comeback = detectComeback(maps, needed);
 
   const perfs = [
-    ...playerPerformances(world, teamA, sA, sB, scoreA > scoreB, stakes, close, rng),
-    ...playerPerformances(world, teamB, sB, sA, scoreB > scoreA, stakes, close, rng),
+    ...playerPerformances(world, teamA, sA, sB, scoreA > scoreB, stakes, close, rng, teamB),
+    ...playerPerformances(world, teamB, sB, sA, scoreB > scoreA, stakes, close, rng, teamA),
   ];
 
   const mvp = pickMvp(perfs, winner.id);
@@ -180,16 +180,49 @@ function detectComeback(maps, needed) {
  * Performance individuelle. Un joueur régulier joue proche de son niveau ;
  * un joueur instable peut porter son équipe ou la couler.
  */
-function playerPerformances(world, team, own, opp, won, stakes, close, rng) {
+/**
+ * Affronter son rival n'est pas un match comme un autre (étape 7E).
+ *
+ * L'effet est **à double tranchant, jamais un bonus**. Un duel contre son rival
+ * est plus volatil : on y joue son meilleur ou son pire match, rarement un match
+ * moyen. Le sang-froid décide du sens — qui tient sous pression se transcende,
+ * qui la subit se crispe — et l'espérance reste nulle pour un mental moyen. Ce
+ * n'est pas une récompense de rivalité, c'est un révélateur.
+ *
+ * Mesuré au diagnostic, la rivalité ne pesait ni sur la force en match, ni sur
+ * le recrutement, ni sur la charge : elle n'était qu'un fil de récit. Elle
+ * devient ici un fait du monde sans devenir un avantage.
+ *
+ * On lit l'étiquette portée par la relation plutôt que `career.rivalId` : le
+ * monde ne connaît pas la carrière du joueur, et une rivalité est de toute façon
+ * un fait entre deux personnes.
+ */
+function duelContreRival(world, person, equipeAdverse) {
+  if (!equipeAdverse) return false;
+  for (const id of [...(equipeAdverse.roster ?? []), ...(equipeAdverse.subs ?? [])]) {
+    if (hasTag(world, person.id, id, REL_TAGS.RIVAL)) return true;
+  }
+  return false;
+}
+
+function playerPerformances(world, team, own, opp, won, stakes, close, rng, equipeAdverse = null) {
   const game = teamGame(team);
   const players = rosterPersons(world, team);
   const out = [];
   for (const p of players) {
     const m = mods(p);
     const level = effectiveRating(p, game);
-    const variance = 13 * (1.4 - p.attrs.consistency / 100) * m.formVolatility;
+    let variance = 13 * (1.4 - p.attrs.consistency / 100) * m.formVolatility;
+    let rivalDelta = 0;
+    if (duelContreRival(world, p, equipeAdverse)) {
+      variance *= 1.35;
+      // Centré sur 55, l'échelle mentale décide du sens ET du montant : un
+      // mental moyen ne gagne ni ne perd rien, seul l'écart au centre compte.
+      const mental = (p.attrs.clutch + p.attrs.composure + p.attrs.pressure) / 3;
+      rivalDelta = clamp((mental - 55) / 45, -1, 1) * 1.8;
+    }
     const clutchBonus = close ? (p.attrs.clutch - 55) * 0.09 * stakes + m.clutchDelta * 0.4 : 0;
-    const raw = level - opp.individual + rng.gauss(0, variance) + clutchBonus + (won ? 2.5 : -2.5);
+    const raw = level - opp.individual + rng.gauss(0, variance) + clutchBonus + rivalDelta + (won ? 2.5 : -2.5);
     // Note de match sur 10, centrée sur 6.
     const score = clamp(6 + raw / 9, 0.5, 10);
     out.push({ personId: p.id, teamId: team.id, score, won, raw });

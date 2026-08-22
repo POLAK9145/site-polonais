@@ -280,13 +280,39 @@ export function buildNarrative(world, career, legacy) {
     parts.push(`${gameChanges[gameChanges.length - 1].text} Ce choix a redéfini la suite.`);
   }
 
-  if (career.rivalId) {
-    const rival = world.persons[career.rivalId];
+  // Le fil rouge doit avoir duré (étape 7E). Une version antérieure citait le
+  // rival dès que `rivalId` existait : mesuré, il était retraité dans quinze cas
+  // sur dix-huit, et le bilan présentait comme fil rouge quelqu'un que le joueur
+  // n'avait plus croisé depuis une décennie. On raconte maintenant la rivalité
+  // la plus longue réellement vécue, active ou éteinte, et on dit ce qu'elle est
+  // devenue plutôt que de la figer au présent.
+  const rivalites = [
+    ...(career.pastRivalries ?? []),
+    ...(career.rivalId ? [{ rivalId: career.rivalId, depuis: career.rivalry?.depuis ?? null, raison: null }] : []),
+  ]
+    .map((r) => ({ ...r, duree: r.depuis ? (r.week ?? world.week) - r.depuis : 0 }))
+    .sort((a, b) => b.duree - a.duree);
+  const principale = rivalites[0];
+  if (principale) {
+    const rival = world.persons[principale.rivalId];
     if (rival) {
       const rel = relationsOf(world, person.id).find((r) => r.other === rival.id);
       const state = rel ? describeRelation(rel.value, rel.tags) : 'Rivalité';
-      parts.push(`${rival.nick} aura été le fil rouge de votre carrière. État final de la relation : ${state.toLowerCase()}.`);
+      const annees = Math.round(principale.duree / 52);
+      const fin = {
+        'retraité': ` Il a raccroché avant vous.`,
+        'autre scène': ` Il est parti jouer à autre chose.`,
+        'réconciliée': ` Vous avez fini par vous entendre.`,
+        'disparu': ` On a fini par ne plus en entendre parler.`,
+      }[principale.raison] ?? '';
+      const duree = annees >= 2 ? ` pendant ${annees} ans` : '';
+      parts.push(
+        `${rival.nick} aura été le fil rouge de votre carrière${duree}.${fin} État final de la relation : ${state.toLowerCase()}.`,
+      );
     }
+  }
+  if (rivalites.length > 1) {
+    parts.push(`Vous aurez eu ${rivalites.length} rivalités déclarées, pas une seule.`);
   }
 
   const bestMemory = career.memories.find((m) => m.kind === 'title') ?? career.memories[0];
