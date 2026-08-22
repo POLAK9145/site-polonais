@@ -244,11 +244,40 @@ export function buildNarrative(world, career, legacy) {
 
   const important = career.timeline.filter((t) => t.important);
 
+  // Le récit doit se fonder sur les FAITS, pas sur la présence d'une entrée de
+  // journal (étape 7G). La version précédente concluait « jamais signé de
+  // contrat professionnel » de la seule absence d'une ligne `kind: 'contract'`
+  // marquée importante. Or deux chemins mènent à une équipe sans jamais écrire
+  // cette ligne : on rejoint une équipe amateur sans rien signer, et le marché
+  // des PNJ peut recruter le joueur libre sans passer par une offre. Mesuré,
+  // `verifyLegacy` relevait la contradiction dans 3 carrières sur 27.
+  //
+  // On raconte donc à partir de `teamHistory`, qui distingue désormais un
+  // passage sous contrat d'un passage amateur.
   const firstContract = important.find((t) => t.kind === 'contract');
+  const passages = person.teamHistory ?? [];
+  const sousContrat = passages.filter((h) => h.contract);
   if (firstContract) {
     parts.push(`${firstContract.text} (${firstContract.year})`);
+  } else if (sousContrat.length > 0) {
+    // Il y a bien eu contrat, mais aucune signature dont le journal ait fait
+    // un moment marquant : on dit ce qui s'est passé plutôt que de le nier.
+    const premier = sousContrat[0];
+    const structures = new Set(sousContrat.map((h) => h.orgName).filter(Boolean));
+    parts.push(
+      structures.size <= 1
+        ? `Vous signez chez ${premier.orgName ?? 'une structure'} en ${yearOf(premier.from)}, sans que cette signature ait jamais fait de bruit.`
+        : `Vous signez chez ${premier.orgName ?? 'une structure'} en ${yearOf(premier.from)}, puis dans ${structures.size - 1} autre${structures.size > 2 ? 's' : ''} structure${structures.size > 2 ? 's' : ''}, sans qu'aucun de ces contrats ne marque vraiment votre carrière.`,
+    );
+  } else if (passages.length > 0) {
+    // Aucun contrat, mais des équipes tout de même : nier les deux serait faux.
+    const premier = passages[0];
+    const structures = new Set(passages.map((h) => h.orgName).filter(Boolean));
+    parts.push(
+      `Vous n'avez jamais signé de contrat professionnel. Vous aurez tout de même joué sous les couleurs de ${premier.orgName ?? 'une équipe amateur'}${structures.size > 1 ? `, puis de ${structures.size - 1} autre${structures.size > 2 ? 's' : ''}` : ''}, à partir de ${yearOf(premier.from)}.`,
+    );
   } else {
-    parts.push(`Vous n'avez jamais signé de contrat professionnel.`);
+    parts.push(`Vous n'avez jamais signé de contrat professionnel, ni porté les couleurs de personne.`);
   }
 
   const titles = important.filter((t) => t.kind === 'title');

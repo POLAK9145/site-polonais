@@ -21,7 +21,8 @@ import assert from 'node:assert/strict';
 import { RNG, normalizeSeed } from '../src/engine/rng.js';
 import { WEEKS_PER_YEAR } from '../src/engine/time.js';
 import { generateWorld } from '../src/engine/worldgen.js';
-import { STATUS } from '../src/engine/person.js';
+import { GAMES_BY_ID } from '../src/data/games.js';
+import { STATUS, baseRating, age as personAge } from '../src/engine/person.js';
 import {
   createSession, advanceWeek, resolveDecision, acceptOffer,
   seekTeam, canSeekTeam, foundTeam, canFoundTeam, setRoutine,
@@ -109,14 +110,36 @@ test('3 — une carrière peut connaître plusieurs rivalités successives', () 
 
   // Et une rivalité vivante interdit qu'une autre naisse.
   const world = generateWorld({ seed: 9320, startYear: 2030 });
-  const [moi, lui] = Object.values(world.persons).filter((p) => p.status !== STATUS.STAFF).slice(0, 2);
+  const vivants = Object.values(world.persons).filter((p) => p.status !== STATUS.STAFF);
+  const [moi, lui] = vivants.slice(0, 2);
   lui.gameId = moi.gameId;
   adjustRelation(world, moi.id, lui.id, -20, { week: 0, text: 'Rivalité.', tag: REL_TAGS.RIVAL });
+
+  // Le contexte doit porter tout ce que la condition regarde depuis 7G : la
+  // réputation auprès des pairs (on ne devient pas le rival de quelqu'un en
+  // étant un inconnu) et l'existence réelle d'un pair du même niveau et du
+  // même âge. On plante donc ce pair explicitement, en alignant le niveau et
+  // l'âge du joueur sur les siens : sans cela, ce test mesurerait la densité
+  // de la scène générée plutôt que les règles de succession des rivalités.
+  const pair = vivants.find((p) => p.id !== moi.id && p.id !== lui.id && p.gameId === moi.gameId);
+  assert.ok(pair, 'monde de test sans pair disponible sur la scène');
+  pair.teamId = null;
+  moi.reputation.pros = 30;
+  const game = GAMES_BY_ID[moi.gameId];
   const ctx = {
     world,
+    game,
     person: Object.assign(moi, { stats: { ...moi.stats, matches: 100 } }),
     career: { personId: moi.id, rivalId: lui.id, rivalry: { depuis: 0 }, pastRivalries: [] },
-    rating: 70,
+    rating: baseRating(pair, game),
+    age: personAge(pair, world.week),
+  };
+  // L'âge du joueur suit la semaine du monde : avancer l'horloge sans le
+  // recalculer creuserait un écart d'âge artificiel avec le pair planté, et le
+  // test échouerait pour une raison qui n'a rien à voir avec les rivalités.
+  const alaSemaine = (w) => {
+    world.week = w;
+    ctx.age = personAge(pair, w);
   };
   assert.equal(def.condition(ctx), false, 'une nouvelle rivalité naît alors qu’une autre est vivante');
 
@@ -124,11 +147,11 @@ test('3 — une carrière peut connaître plusieurs rivalités successives', () 
   lui.status = STATUS.RETIRED;
   ctx.career.rivalId = null;
   ctx.career.pastRivalries = [{ rivalId: lui.id, raison: 'retraité', week: 0 }];
-  world.week = 200;
+  alaSemaine(200);
   assert.equal(def.condition(ctx), true, 'aucune nouvelle rivalité possible après la mort de la précédente');
 
   // Mais pas immédiatement : on ne s'invente pas un adversaire dans la semaine.
-  world.week = 20;
+  alaSemaine(20);
   assert.equal(def.condition(ctx), false, 'une nouvelle rivalité naît sans aucun délai');
 });
 

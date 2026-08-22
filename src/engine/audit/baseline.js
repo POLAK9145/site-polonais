@@ -24,6 +24,7 @@ import { createHash } from 'node:crypto';
 import { RNG, normalizeSeed } from '../rng.js';
 import { POLICY_IDS } from './policies.js';
 import { randomPlayerConfig } from './runner.js';
+import { storyAuditRow, narrativeAudit } from './storyAudit.js';
 
 /**
  * Définition figée de la suite de référence.
@@ -124,6 +125,12 @@ export function baselineCareerRow(result) {
     crash: result.crash ? result.crash.message : null,
     worldIssues: result.worldIssues?.length ?? 0,
     careerIssues: result.careerIssues?.length ?? 0,
+    // Volet narratif (étape 7G). Il voyage AVEC la ligne de carrière : une
+    // histoire ne se juge pas sur un fichier séparé qu'on oublierait de
+    // rejouer. L'empreinte de la suite porte sur les entrées, pas sur les
+    // colonnes conservées : ajouter ce champ n'invalide pas baseline-v1, il
+    // n'est simplement pas renseigné avant 7G.
+    story: storyAuditRow(result),
   };
 }
 
@@ -166,7 +173,7 @@ export function baselineWorldRow(worldResult) {
 }
 
 /** Indicateurs de synthèse : ce que l'on compare en priorité. */
-export function baselineHeadlines(careers, worlds) {
+export function baselineHeadlines(careers, worlds, narrative = narrativeAudit(careers)) {
   const ok = careers.filter((c) => !c.crash);
   const num = (fn) => ok.map(fn).filter((x) => typeof x === 'number' && Number.isFinite(x));
   const med = (arr) => {
@@ -225,6 +232,28 @@ export function baselineHeadlines(careers, worlds) {
     worldRelegations: avg(worlds.map((w) => w.relegated)),
     worldNewcomers: avg(worlds.map((w) => w.newcomers)),
     worldIssuesFinal: avg(worlds.map((w) => w.finalIssues)),
+
+    // --- audit narratif (étape 7G) ---
+    // Aplatis ici pour que `compareHeadlines` les traite comme n'importe quel
+    // autre indicateur. Une exécution antérieure à 7G ne les porte pas : la
+    // comparaison les ignore alors au lieu de crier à la régression.
+    storyTellable: narrative.racontabilite.tellable,
+    storyCoherent: narrative.coherence.sansContradiction,
+    storyRival: narrative.racontabilite.rival,
+    storyBestTeammate: narrative.racontabilite.bestTeammate,
+    storyProblemCount: narrative.coherence.carrieresEnDefaut,
+    // Part de variation expliquée par le plafond. On veut qu'elle reste FORTE
+    // pour le niveau atteint et FAIBLE pour tout le reste.
+    talentSharePeak: narrative.divergence.partTalent.pic,
+    talentShareLegacy: narrative.divergence.partTalent.legacy,
+    talentShareDuration: narrative.divergence.partTalent.duree,
+    talentShareTitles: narrative.divergence.partTalent.titres,
+    // Dispersion à plafond comparable : l'effet des décisions, une fois le
+    // talent neutralisé.
+    divPeakIQR: narrative.divergence.aTalentComparable.picIQR,
+    divLegacyIQR: narrative.divergence.aTalentComparable.legacyIQR,
+    divDureeIQR: narrative.divergence.aTalentComparable.dureeIQR,
+    divArchetypes: narrative.divergence.aTalentComparable.archetypes,
   };
 }
 
@@ -259,6 +288,17 @@ export const GUARDED_PROPERTIES = [
   { key: 'worldFinalActive', label: 'joueurs actifs à 30 ans', direction: 'higher', tolerance: 0.2 },
   { key: 'worldFinalTeams', label: 'équipes actives à 30 ans', direction: 'higher', tolerance: 0.2 },
   { key: 'worldFinalGamesAlive', label: 'scènes vivantes à 30 ans', direction: 'higher', tolerance: 0.2 },
+  // --- ajouts 7G ---
+  // Un récit qui se contredit est un défaut majeur, pas une dérive tolérable :
+  // la tolérance est donc serrée.
+  { key: 'storyCoherent', label: 'bilans sans contradiction', direction: 'higher', tolerance: 0.02 },
+  { key: 'storyTellable', label: 'carrières racontables', direction: 'higher', tolerance: 0.15 },
+  // Le talent doit continuer à décider du niveau atteint : c'est la propriété
+  // que 7G interdit explicitement de casser pour gagner de la divergence.
+  { key: 'talentSharePeak', label: 'part du talent dans le niveau atteint', direction: 'higher', tolerance: 0.15 },
+  // …et les décisions doivent continuer à décider du reste.
+  { key: 'divLegacyIQR', label: 'divergence du legacy à talent comparable', direction: 'higher', tolerance: 0.2 },
+  { key: 'divArchetypes', label: 'archétypes distincts à talent comparable', direction: 'higher', tolerance: 0.15 },
 ];
 
 export function compareHeadlines(before, after) {

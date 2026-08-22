@@ -14,6 +14,30 @@ import { releasePlayer } from '../../transfers.js';
 import { selon, VISIBILITE, SAISON_DE_VIE } from '../situation.js';
 import { relieveLoad } from '../../load.js';
 
+/**
+ * Existe-t-il seulement quelqu'un dont on puisse devenir le rival ?
+ *
+ * Version déterministe et sans tirage de `rivalCandidate`, destinée à la
+ * CONDITION de l'événement : une rivalité suppose un pair réel, du même âge et
+ * du même niveau, croisé sur la même scène. Sur une scène clairsemée, ou pour
+ * un joueur isolé dans sa tranche, il n'y a personne — et il ne doit alors rien
+ * se passer. C'est ce fait du monde, et non un poids, qui rend la rivalité
+ * possible ou non (étape 7G).
+ */
+function unPairExiste(ctx, ecartNiveau = 6, ecartAge = 3) {
+  const { world, person } = ctx;
+  for (const p of Object.values(world.persons)) {
+    if (p.id === person.id) continue;
+    if (p.gameId !== person.gameId) continue;
+    if (p.status === STATUS.RETIRED || p.status === STATUS.STAFF) continue;
+    if (p.teamId && p.teamId === person.teamId) continue;
+    if (Math.abs(baseRating(p, ctx.game) - ctx.rating) > ecartNiveau) continue;
+    if (Math.abs(personAge(p, world.week) - ctx.age) > ecartAge) continue;
+    return true;
+  }
+  return false;
+}
+
 /** Candidat crédible au rôle de rival : même scène, niveau et âge proches. */
 function rivalCandidate(ctx) {
   const { world, person } = ctx;
@@ -52,18 +76,49 @@ export const worldEvents = [
     // vérifiables. On ne remplace jamais une rivalité vivante.
     cooldown: 120,
     condition: (ctx) => {
-      if (ctx.person.stats.matches <= 20 || ctx.rating <= 55) return false;
+      // Une rivalité se mesure à ses pairs, pas dans l'absolu (étape 7G). Le
+      // seuil de 55 excluait définitivement tout joueur dont le plafond est plus
+      // bas : mesuré, 44 % des carrières seulement connaissaient un rival, et
+      // c'était le facteur limitant de la racontabilité. On garde un plancher —
+      // il faut être dans la scène pour y avoir un adversaire — mais celui du
+      // circuit amateur, le même que `local_tournament_invite`.
+      if (ctx.person.stats.matches <= 20 || ctx.rating <= 38) return false;
       if (rivalryStatus(ctx.world, ctx.person, ctx.career).vivante) return false;
       // Une rivalité qui vient de s'éteindre laisse un temps de latence : on ne
       // s'invente pas un adversaire la semaine où l'autre raccroche.
       const derniere = ctx.career.pastRivalries?.at(-1);
-      return !derniere || ctx.world.week - derniere.week >= 52;
+      if (derniere && ctx.world.week - derniere.week < 52) return false;
+      // On ne devient pas le rival de quelqu'un en étant un inconnu : il faut
+      // qu'on soit déjà comparé, donc qu'on ait un nom dans le milieu. Mesuré
+      // sans cette clause, la première rivalité naissait à une réputation
+      // médiane de 5 sur 100 — personne ne savait qui était le joueur, mais la
+      // scène « parlait de lui ». C'est aussi une information que le joueur
+      // ressent : on sait si son nom circule.
+      if (ctx.person.reputation.pros < 12) return false;
+      // Et il faut quelqu'un à qui se mesurer.
+      return unPairExiste(ctx);
     },
     weight: (ctx) => {
+      // Le poids suivait `(rating - 52) × 0,2`, donc valait ZÉRO sous 52 : même
+      // rendu éligible, un joueur moyen n'aurait jamais vu la scène se
+      // déclencher. Il suit désormais la place qu'on occupe dans le milieu —
+      // être reconnu de ses pairs — parce que c'est de cela qu'une rivalité est
+      // faite : on ne se fait comparer à quelqu'un que si l'on est déjà un nom.
+      //
+      // Ce poids ne gouverne PAS la fréquence des rivalités, et il faut le
+      // dire ici pour que personne ne vienne le régler en croyant le contraire.
+      // Mesuré sur la trace des tirages : dans plus d'un tirage sur deux où cet
+      // événement est éligible, il est le SEUL candidat — le tirage étant
+      // normalisé, son poids absolu n'y change rien. Diviser ce poids par douze
+      // a laissé la part de carrières avec rivalité rigoureusement inchangée.
+      // Ce qui gouverne la fréquence est la durée d'éligibilité, donc la
+      // condition ci-dessus. Le poids ne sert qu'à arbitrer les semaines où
+      // plusieurs choses peuvent arriver en même temps.
+      const standing = clamp((ctx.person.reputation.pros - 10) * 0.06, 0.15, 4);
       // Une deuxième rivalité est plus rare qu'une première : on n'a pas
       // l'énergie de tout recommencer aussi souvent.
       const deja = ctx.career.pastRivalries?.length ?? 0;
-      return clamp((ctx.rating - 52) * 0.2, 0, 7) / (1 + deja * 0.8);
+      return standing / (1 + deja * 0.8);
     },
     title: 'Un nom qui revient',
     text: (ctx) => {

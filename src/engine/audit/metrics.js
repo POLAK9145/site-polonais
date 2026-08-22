@@ -357,8 +357,18 @@ export function verifyLegacy(session) {
     }
   }
   // 3. « jamais signé de contrat » doit être vrai.
-  if (text.includes('jamais signé de contrat') && person.teamHistory.length > 0) {
-    problems.push({ code: 'denies_existing_contract', detail: `${person.teamHistory.length} passages en équipe` });
+  // La version antérieure à 7G comparait cette phrase au NOMBRE DE PASSAGES en
+  // équipe, ce qui est un autre fait : on rejoint une équipe amateur sans rien
+  // signer. Le vérificateur signalait donc des récits véridiques — et aurait
+  // laissé passer un vrai mensonge chez un joueur d'une seule structure. On
+  // compare désormais au fait exact que la phrase affirme.
+  const contracted = person.teamHistory.filter((h) => h.contract).length;
+  if (text.includes('jamais signé de contrat') && contracted > 0) {
+    problems.push({ code: 'denies_existing_contract', detail: `${contracted} passages sous contrat` });
+  }
+  // 3 bis. …et l'inverse : nier tout passage en équipe alors qu'il y en a eu.
+  if (text.includes('ni porté les couleurs de personne') && person.teamHistory.length > 0) {
+    problems.push({ code: 'denies_existing_team', detail: `${person.teamHistory.length} passages en équipe` });
   }
   // 4. Le rival cité doit exister.
   if (career.rivalId && !world.persons[career.rivalId] && text.includes('fil rouge')) {
@@ -416,14 +426,23 @@ export function storyMetrics(session) {
     hasBreakthrough: !!breakthrough,
     hasBestMoment: !!bestMoment,
     hasWorstMoment: !!worstMoment,
-    hasRival: !!career.rivalId,
+    // `closeRivalry` remet `rivalId` à null quand la rivalité s'éteint : lire
+    // ce seul champ revenait à demander « reste-t-il une rivalité VIVANTE à la
+    // retraite ? », pas « cette carrière a-t-elle eu un rival ? ». Mesuré sur
+    // 108 carrières, l'écart entre les deux questions est de vingt points
+    // (61 % contre 81 %) — l'instrument sous-comptait donc massivement, et
+    // c'est lui qui désignait la rivalité comme facteur limitant de la
+    // racontabilité (étape 7G).
+    hasRival: !!career.rivalId || (career.pastRivalries?.length ?? 0) > 0,
     hasBestTeammate: !!bestTeammate,
     hasGameChange: career.counters.gamesPlayed.length > 1,
     hasTeamChange: new Set(person.teamHistory.map((h) => h.teamId)).size > 1,
     // Une histoire « racontable » a au moins un point haut, un point bas et
     // un personnage secondaire identifiable.
     tellable:
-      !!bestMoment && !!worstMoment && (!!career.rivalId || !!bestTeammate),
+      !!bestMoment &&
+      !!worstMoment &&
+      (!!career.rivalId || (career.pastRivalries?.length ?? 0) > 0 || !!bestTeammate),
   };
 }
 

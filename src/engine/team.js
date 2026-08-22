@@ -274,6 +274,12 @@ export function recordStint(world, person, team, org, week) {
     gameId: team.gameId,
     from: week,
     to: null,
+    // Un passage en équipe n'est pas forcément un contrat (étape 7G). On
+    // rejoint une équipe amateur sans rien signer, et le bilan final doit
+    // pouvoir dire lequel des deux s'est produit. `person.contract` est
+    // toujours à jour ici : signPlayer l'affecte avant d'appeler cette
+    // fonction, et un joueur libéré l'a vu remis à null.
+    contract: !!person.contract,
   });
 }
 

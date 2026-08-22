@@ -27,6 +27,7 @@ import {
   baselineHeadlines,
   compareHeadlines,
 } from '../src/engine/audit/baseline.js';
+import { narrativeAudit } from '../src/engine/audit/storyAudit.js';
 
 const SELF = fileURLToPath(import.meta.url);
 
@@ -151,6 +152,8 @@ async function runSuite(cmd, opts) {
     retiredAgeMedian: median(npcRun.trajectories.map((t) => t.retiredAge).filter((x) => x !== null)),
   };
 
+  const narrative = narrativeAudit(rows);
+
   const payload = {
     suite: { ...suite },
     fingerprint,
@@ -158,7 +161,10 @@ async function runSuite(cmd, opts) {
     engineCommit: gitCommit(),
     engineDirty: gitDirty(),
     durationSeconds: Math.round((Date.now() - t0) / 10) / 100,
-    headlines: baselineHeadlines(rows, worlds),
+    // L'audit narratif tourne AVEC la suite, jamais à côté : une mesure qu'on
+    // doit penser à relancer finit par ne plus être relancée (étape 7G).
+    narrative,
+    headlines: baselineHeadlines(rows, worlds, narrative),
     npc,
     careers: rows,
     worlds,
@@ -233,6 +239,36 @@ function printHeadlines(payload) {
   lines.push(`── Indicateurs de la suite « ${payload.suite.name} » ──`);
   for (const [k, v] of Object.entries(h)) {
     if (typeof v === 'number') lines.push(`  ${k.padEnd(30)} ${v}`);
+  }
+  const nar = payload.narrative;
+  if (nar) {
+    lines.push('');
+    lines.push(`── Audit narratif « ${nar.name} » (${nar.careers} carrières) ──`);
+    lines.push(`  racontables                    ${nar.racontabilite.tellable}`);
+    lines.push(`  dont manque un point haut      ${nar.racontabilite.manque.bestMoment}`);
+    lines.push(`  dont manque un point bas       ${nar.racontabilite.manque.worstMoment}`);
+    lines.push(`  dont manque un personnage      ${nar.racontabilite.manque.personnage}`);
+    lines.push(`  bilans sans contradiction      ${nar.coherence.sansContradiction} (${nar.coherence.carrieresEnDefaut} en défaut)`);
+    for (const [k, v] of Object.entries(nar.coherence.problemes)) {
+      lines.push(`      ${k.padEnd(26)} ${v}`);
+    }
+    lines.push(`  part du talent — pic           ${nar.divergence.partTalent.pic}`);
+    lines.push(`  part du talent — legacy        ${nar.divergence.partTalent.legacy}`);
+    lines.push(`  part du talent — durée         ${nar.divergence.partTalent.duree}`);
+    lines.push(`  part du talent — titres        ${nar.divergence.partTalent.titres}`);
+    lines.push(`  part du talent — structures    ${nar.divergence.partTalent.structures}`);
+    lines.push(`  à plafond comparable (médianes des tranches) :`);
+    lines.push(`      IQR pic                    ${nar.divergence.aTalentComparable.picIQR}`);
+    lines.push(`      IQR legacy                 ${nar.divergence.aTalentComparable.legacyIQR}`);
+    lines.push(`      IQR durée                  ${nar.divergence.aTalentComparable.dureeIQR}`);
+    lines.push(`      archétypes (n=25)          ${nar.divergence.aTalentComparable.archetypes}`);
+    lines.push(`  tranches retenues              ${nar.divergence.tranchesRetenues} (${nar.divergence.carrieresRetenues} carrières)`);
+    for (const t of nar.divergence.tranches) {
+      lines.push(
+        `      ${t.plafond.padEnd(8)} n=${String(t.n).padStart(4)}  pic±${String(t.picIQR).padStart(5)}  legacy±${String(t.legacyIQR).padStart(5)}  durée±${String(t.dureeIQR).padStart(4)}  arch=${String(t.archetypes).padStart(4)}  racontable=${t.partRacontable}`,
+      );
+    }
+    lines.push('');
   }
   lines.push('  archétypes :');
   for (const [k, v] of Object.entries(h.archetypeShares ?? {})) {
