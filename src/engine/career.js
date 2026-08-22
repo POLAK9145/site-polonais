@@ -90,6 +90,19 @@ export function createCareer(world, person, opts = {}) {
     flags: {},
 
     rivalId: null,
+    /**
+     * Vie de la rivalité en cours (étape 7E).
+     *
+     * `rivalId` seul ne disait que « qui » — jamais « où en est-on ». Mesuré, une
+     * rivalité naissait vers l'an 3, connaissait un affrontement et une
+     * résolution, puis se figeait pour une décennie : dix-huit sur vingt
+     * terminaient exactement sur une borne du système, et le bilan citait
+     * pourtant le rival comme « fil rouge » alors qu'il était retraité dans
+     * quinze cas sur dix-huit.
+     */
+    rivalry: null,
+    /** Rivalités éteintes, que le récit garde même quand le présent les lâche. */
+    pastRivalries: [],
     mentorId: null,
     learningGameId: null,
 

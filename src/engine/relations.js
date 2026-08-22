@@ -306,3 +306,49 @@ export function describeRelation(value, tags = []) {
 export function formatRelationHistory(entry) {
   return `${formatDate(entry.week)} — ${entry.text}`;
 }
+
+
+// --- Rivalités (étape 7E) ----------------------------------------------------
+
+/**
+ * Une rivalité est-elle encore vivante ?
+ *
+ * Mesuré au diagnostic, le rival était retraité dans quinze cas sur dix-huit à
+ * la fin de la carrière, et le bilan le citait quand même comme « fil rouge ».
+ * Une rivalité a besoin des deux : quelqu'un en face, et une raison de continuer.
+ *
+ * Quatre façons de mourir, toutes vérifiables dans le monde — il n'existe plus,
+ * il a raccroché, il ne joue plus au même jeu, ou vous vous êtes réconciliés.
+ * Une rivalité morte n'est pas effacée : elle rejoint les rivalités passées.
+ */
+export function rivalryStatus(world, person, career) {
+  const id = career?.rivalId;
+  if (!id) return { vivante: false, raison: 'aucune', rival: null };
+  const rival = world.persons[id];
+  if (!rival) return { vivante: false, raison: 'disparu', rival: null };
+  if (rival.status === 'retired') return { vivante: false, raison: 'retraité', rival };
+  if (rival.gameId !== person.gameId) return { vivante: false, raison: 'autre scène', rival };
+  const rel = world.relations[relKey(person.id, id)];
+  const valeur = rel?.value ?? 0;
+  // Une rivalité réconciliée est finie : il en reste une amitié, pas une
+  // tension. Le seuil est haut pour ne pas confondre avec un respect distant.
+  if (valeur >= 40) return { vivante: false, raison: 'réconciliée', rival, valeur };
+  return { vivante: true, raison: null, rival, valeur, tension: Math.max(0, -valeur) };
+}
+
+/** Referme la rivalité en cours et l'archive, sans toucher à la relation. */
+export function closeRivalry(career, world, { raison, week }) {
+  if (!career.rivalId) return null;
+  const entry = {
+    rivalId: career.rivalId,
+    raison,
+    week,
+    depuis: career.rivalry?.depuis ?? null,
+    actes: career.rivalry?.actes ?? 0,
+  };
+  career.pastRivalries = career.pastRivalries ?? [];
+  career.pastRivalries.push(entry);
+  career.rivalId = null;
+  career.rivalry = null;
+  return entry;
+}
