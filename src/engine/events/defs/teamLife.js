@@ -53,7 +53,14 @@ export const teamLifeEvents = [
     tags: ['équipe', 'social'],
     cooldown: 60,
     condition: (ctx) => ctx.hasTeam && teammates(ctx).length > 0 && ctx.team.synergy > 45,
-    weight: (ctx) => 3 + ctx.team.synergy * 0.04,
+    // Se rapprocher de quelqu'un demande de la disponibilité (étape 7F). Un
+    // joueur à bout n'a pas l'énergie des amitiés, et un joueur isolé dans son
+    // vestiaire a d'autant plus besoin qu'il s'en noue une.
+    weight: (ctx) => {
+      const s = ctx.situation;
+      const base = 3 + ctx.team.synergy * 0.04;
+      return base * (s.aBout ? 0.45 : s.enConvalescence ? 0.6 : 1) * (s.isoleDansEquipe ? 1.5 : 1);
+    },
     title: 'Une entente qui se voit',
     text: (ctx) => {
       // On se rapproche de celui dont on est déjà le plus proche, pas d'un

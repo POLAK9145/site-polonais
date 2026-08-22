@@ -319,7 +319,15 @@ export const worldEvents = [
     // Étape 7D : changer de jeu, c'est aussi laisser des gens derrière.
     tags: ['jeu', 'transfert'],
     cooldown: 90,
-    condition: (ctx) => ctx.person.status !== STATUS.RETIRED && ctx.career.counters.weeks > 30,
+    // On ne réapprend pas un jeu entier pendant qu'on se remet d'une rupture
+    // (étape 7F). C'est la SEULE restriction ajoutée : l'éligibilité d'un joueur
+    // en équipe n'est que de huit événements, et en retirer davantage creuserait
+    // des semaines vides. Le reste de la contextualisation passe par les poids,
+    // qui rendent pertinent ce qui se déclenche sans réduire ce qui est possible.
+    condition: (ctx) =>
+      ctx.person.status !== STATUS.RETIRED &&
+      ctx.career.counters.weeks > 30 &&
+      !ctx.situation.enConvalescence,
     weight: (ctx) => {
       // On ne propose un changement de jeu que s'il y a une raison :
       // scène en déclin, plafond atteint, ou absence d'équipe.
@@ -477,7 +485,12 @@ export const worldEvents = [
     tags: ['compétition', 'jeu'],
     cooldown: 100,
     condition: (ctx) => ctx.age > 22 && ctx.person.stats.matches > 40,
-    weight: (ctx) => clamp((ctx.age - 21) * 0.7, 0, 6),
+    // Voir arriver plus jeune que soi pique d'autant plus qu'on est déjà
+    // remplaçant ou en difficulté (étape 7F) : la menace est concrète.
+    weight: (ctx) => {
+      const s = ctx.situation;
+      return clamp((ctx.age - 21) * 0.7, 0, 6) * (s.surLeBanc ? 1.6 : 1) * (s.enDifficulte ? 1.3 : 1);
+    },
     title: 'La génération suivante',
     text: (ctx) => {
       const kid = findProdigy(ctx);

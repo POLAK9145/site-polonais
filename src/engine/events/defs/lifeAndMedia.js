@@ -285,7 +285,14 @@ export const lifeAndMediaEvents = [
     tags: ['argent', 'média'],
     cooldown: 60,
     condition: (ctx) => ctx.person.followers > 12000 || ctx.person.reputation.public > 30,
-    weight: (ctx) => clamp(ctx.person.followers / 40000 + ctx.person.reputation.public * 0.04, 0, 7),
+    // Une marque contacte qui elle veut, mais le joueur ne l'entend pas de la
+    // même oreille selon sa situation (étape 7F). Quand l'argent manque, on
+    // écoute ; quand on est à bout, une obligation de plus n'a rien d'anodin.
+    weight: (ctx) => {
+      const s = ctx.situation;
+      const base = clamp(ctx.person.followers / 40000 + ctx.person.reputation.public * 0.04, 0, 7);
+      return base * (s.fauche ? 1.6 : 1) * (s.aBout ? 1.35 : 1);
+    },
     title: 'Une marque vous contacte',
     text: (ctx) => {
       const sponsor = ctx.rng.pick(SPONSOR_TYPES.filter((s) => s.id !== 'local'));
@@ -404,7 +411,14 @@ export const lifeAndMediaEvents = [
     tags: ['média', 'mental'],
     cooldown: 70,
     condition: (ctx) => ctx.person.reputation.public > 15 && (mods(ctx.person).conflictRisk > 1.2 || ctx.person.stress > 60),
-    weight: (ctx) => clamp((mods(ctx.person).conflictRisk - 1) * 5 + (ctx.person.stress - 55) * 0.08, 0, 6),
+    // Une polémique éclate d'autant plus qu'on est à cran et qu'on s'est déjà
+    // fait des ennemis (étape 7F) : les gens qui vous en veulent attendent
+    // l'occasion.
+    weight: (ctx) => {
+      const s = ctx.situation;
+      const base = clamp((mods(ctx.person).conflictRisk - 1) * 5 + (ctx.person.stress - 55) * 0.08, 0, 6);
+      return base * (s.aDesEnnemis ? 1.5 : 1) * (s.aBout ? 1.3 : 1);
+    },
     title: 'Une phrase de trop',
     text: (ctx) => {
       const s = ctx.situation;
@@ -622,7 +636,9 @@ export const lifeAndMediaEvents = [
     tags: ['média', 'argent'],
     cooldown: 80,
     condition: (ctx) => ctx.person.followers > 40000 && ctx.person.reputation.public > 25,
-    weight: (ctx) => clamp(ctx.person.followers / 90000, 0, 6) * (ctx.person.status === 'inactive' ? 2.5 : 1),
+    // Basculer vers le contenu est une porte de sortie : elle s'ouvre d'autant
+    // plus qu'on est fauché ou qu'on ne joue plus (étape 7F).
+    weight: (ctx) => clamp(ctx.person.followers / 90000, 0, 6) * (ctx.situation.fauche ? 1.5 : 1) * (ctx.situation.surLeBanc ? 1.4 : 1) * (ctx.person.status === 'inactive' ? 2.5 : 1),
     title: 'L’autre carrière possible',
     text: (ctx) => {
       const s = ctx.situation;
