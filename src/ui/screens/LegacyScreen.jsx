@@ -5,6 +5,13 @@ import { timelineView, memoriesView, formatMoney } from '../../engine/view.js';
 import Bar from '../components/Bar.jsx';
 
 /** Page LEGACY (§48). Construite uniquement à partir de faits survenus. */
+/**
+ * Combien de « moments marquants » avant que le mot ne veuille plus rien dire.
+ * Mesuré : une carrière en produit jusqu'à 82. Les plus forts d'abord, le reste
+ * à un clic — on ne supprime rien (étape 8B).
+ */
+const MOMENTS_EN_TETE = 6;
+
 export default function LegacyScreen() {
   const { session } = useStore();
   const [copied, setCopied] = useState(false);
@@ -12,7 +19,9 @@ export default function LegacyScreen() {
   const narrative = buildNarrative(session.world, session.career, legacy);
   const card = buildShareCard(session.world, session.career, legacy);
   const stats = careerStats(session.world, session.career);
-  const timeline = timelineView(session);
+  const [journalComplet, setJournalComplet] = useState(false);
+  const [tousLesMoments, setTousLesMoments] = useState(false);
+  const timeline = timelineView(session, { mode: journalComplet ? 'complet' : 'fiche' });
   const memories = memoriesView(session);
   const options = postCareerOptions(session.world, session.career);
   const person = session.world.persons[session.career.personId];
@@ -76,10 +85,25 @@ export default function LegacyScreen() {
 
       {memories.length > 0 && (
         <section className="card">
-          <h2>Moments marquants</h2>
-          {memories.map((m, i) => (
+          <div className="section-tete">
+            <h2>Moments marquants</h2>
+            {memories.length > MOMENTS_EN_TETE && (
+              <button className="lien" onClick={() => setTousLesMoments((v) => !v)}>
+                {tousLesMoments
+                  ? 'N’afficher que les plus forts'
+                  : `Voir les ${memories.length - MOMENTS_EN_TETE} autres`}
+              </button>
+            )}
+          </div>
+          {(tousLesMoments ? memories : memories.slice(0, MOMENTS_EN_TETE)).map((m, i) => (
             <div key={i} className="memory">
-              <strong>{m.title} <span className="muted">· {m.year}</span></strong>
+              <strong>
+                {m.title}{' '}
+                <span className="muted">
+                  · {m.annees.join(', ')}
+                  {m.occurrences > 1 && ` (${m.occurrences} fois)`}
+                </span>
+              </strong>
               <p className="muted">{m.text}</p>
             </div>
           ))}
@@ -95,15 +119,37 @@ export default function LegacyScreen() {
       </section>
 
       <section className="card">
-        <h2>Timeline complète</h2>
+        <div className="section-tete">
+          <h2>{journalComplet ? 'Journal complet' : 'Année par année'}</h2>
+          <button className="lien" onClick={() => setJournalComplet((v) => !v)}>
+            {journalComplet ? 'Revenir à l’essentiel' : 'Voir le journal complet'}
+          </button>
+        </div>
+        {!journalComplet && (
+          <p className="muted small">
+            Les saisons sont résumées et les matchs sans enjeu regroupés. Rien n’est
+            supprimé : le journal complet est à un clic.
+          </p>
+        )}
         {timeline.map((year) => (
           <div key={year.year} className="timeline-year">
-            <h3>{year.year}</h3>
-            <ul className="timeline">
-              {year.entries.map((e, i) => (
-                <li key={i} className={`${e.kind} ${e.important ? 'important' : ''}`}>{e.text}</li>
-              ))}
-            </ul>
+            <h3>
+              {year.year}
+              {year.resume && (
+                <span className="annee-resume">
+                  {year.resume.matchs} match{year.resume.matchs > 1 ? 's' : ''} ·{' '}
+                  {year.resume.victoires} victoire{year.resume.victoires > 1 ? 's' : ''} ·{' '}
+                  {year.resume.taux} %
+                </span>
+              )}
+            </h3>
+            {year.entries.length > 0 && (
+              <ul className="timeline">
+                {year.entries.map((e, i) => (
+                  <li key={i} className={`${e.kind} ${e.important ? 'important' : ''}`}>{e.text}</li>
+                ))}
+              </ul>
+            )}
           </div>
         ))}
       </section>

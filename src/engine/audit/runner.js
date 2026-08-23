@@ -86,6 +86,14 @@ export function runOneCareer({
   difficulty = 'standard',
   playerConfig = null,
   collectWorld = false,
+  // Rappelé à chaque semaine jouée, pour observer une carrière PENDANT qu'elle
+  // se déroule. Sans ce crochet, toute mesure en cours de route obligeait à
+  // recopier la boucle d'interaction ailleurs — et une copie finit toujours par
+  // diverger de l'originale, ce qui ferait mesurer autre chose que l'audit.
+  onWeek = null,
+  // Renvoie la session elle-même. Sert aux outils qui doivent inspecter l'état
+  // final : écrans de fin de partie, sauvegardes de démonstration.
+  keepSession = false,
 }) {
   const configRng = new RNG(normalizeSeed(`${seed}:config`));
   const player = playerConfig ?? randomPlayerConfig(configRng);
@@ -150,6 +158,8 @@ export function runOneCareer({
           if (founded.ok) teamsFounded++;
         }
       }
+
+      if (onWeek) onWeek(session, weeks);
     }
   } catch (err) {
     crash = { message: err?.message ?? String(err), stack: (err?.stack ?? '').split('\n')[1]?.trim() };
@@ -173,6 +183,7 @@ export function runOneCareer({
     narrativeLength: legacyCheck.narrativeLength,
     story,
     interaction: { offersSeen, offersAccepted, seekAttempts, seekSuccesses, teamsFounded },
+    session: keepSession ? session : null,
     world: collectWorld ? worldMetrics(session.world) : null,
     orgs: collectWorld ? orgMetrics(session.world, orgSnapshot) : null,
     teams: collectWorld ? teamMetrics(session.world, teamSnapshot) : null,

@@ -170,7 +170,10 @@ d'inscription »).
 - **Vieillissement réel** : pic vers 22-26 ans, déclin mécanique ensuite,
   compensé (ou non) par la lecture du jeu.
 - **Fin de carrière** : score en 7 dimensions, archétype, récit généré
-  uniquement à partir de faits survenus, carte de carrière partageable.
+  uniquement à partir de faits survenus, carte de carrière partageable. La
+  fiche résume les saisons au lieu de dérouler le journal — le titre gagné n'y
+  pèse plus autant que le 312ᵉ match de poule — et le journal complet reste
+  accessible d'un clic.
 - **Charge accumulée visible** : l'état ressenti (frais → burnout), sa
   tendance, ce qui pèse, et surtout où la routine choisie mène si on la tient.
   La projection est l'inversion exacte de la loi d'accumulation du moteur, et

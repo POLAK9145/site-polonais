@@ -529,12 +529,38 @@ export function statsView(session) {
 }
 
 /** Timeline de carrière (§65). */
-export function timelineView(session) {
+/**
+ * La carrière année par année.
+ *
+ * Deux lectures, parce que ce ne sont pas les mêmes questions (étape 8B) :
+ *
+ *   `complet` — tout, dans l'ordre. C'est un journal de bord.
+ *   `fiche`   — ce qui a compté, plus une ligne de résumé par saison.
+ *
+ * Mesuré sur 18 carrières de 25 ans : la timeline compte 167 entrées en
+ * médiane et jusqu'à 489, dont **57,5 % de simples résultats de match**. Tout
+ * afficher dans le bilan final donnait une page de seize mille pixels où le
+ * titre gagné pesait autant, visuellement, que le 312ᵉ match de poule. Le
+ * commentaire d'`addMemory` prévoyait d'ailleurs le cas depuis le début :
+ * « conservé même quand la timeline est résumée ».
+ *
+ * Rien n'est perdu : le mode `complet` reste à un clic. Résumer n'est pas
+ * cacher — c'est refuser que l'essentiel pèse autant que le reste.
+ */
+export function timelineView(session, { mode = 'complet' } = {}) {
   const { career } = session;
   const byYear = new Map();
   for (const entry of career.timeline) {
-    if (!byYear.has(entry.year)) byYear.set(entry.year, []);
-    byYear.get(entry.year).push({
+    if (!byYear.has(entry.year)) byYear.set(entry.year, { entries: [], matchs: 0, victoires: 0 });
+    const annee = byYear.get(entry.year);
+    if (entry.kind === 'match') {
+      annee.matchs++;
+      if (entry.data?.won) annee.victoires++;
+    }
+    // En mode fiche, les matchs sans enjeu sont comptés mais pas listés. Ceux
+    // que le moteur a marqués « importants » restent, eux, à leur place.
+    if (mode === 'fiche' && entry.kind === 'match' && !entry.important) continue;
+    annee.entries.push({
       date: formatDate(entry.week),
       text: entry.text,
       kind: entry.kind,
@@ -543,16 +569,72 @@ export function timelineView(session) {
   }
   return [...byYear.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([year, entries]) => ({ year, entries }));
+    .map(([year, a]) => ({
+      year,
+      entries: a.entries,
+      // Ce que les matchs de la saison ont donné, une fois qu'on ne les liste
+      // plus un par un. `null` quand il n'y en a pas eu : une saison sans
+      // compétition ne doit pas afficher « 0 match, 0 % ».
+      resume:
+        a.matchs > 0
+          ? { matchs: a.matchs, victoires: a.victoires, taux: Math.round((a.victoires / a.matchs) * 100) }
+          : null,
+    }));
 }
 
+/**
+ * Les moments marquants.
+ *
+ * Mesuré : jusqu'à 82 par carrière. Au-delà d'une poignée, le mot ne veut plus
+ * rien dire. On les classe donc par ce qu'ils pèsent réellement — un titre ou
+ * une rupture marquent une carrière, un bon tournoi la ponctue — sans en
+ * supprimer aucun : l'interface montre les premiers et propose le reste.
+ */
+const POIDS_SOUVENIR = {
+  title: 5,
+  crisis: 5,
+  comeback: 4,
+  rivalry: 4,
+  betrayal: 4,
+  duo: 3,
+  transfer: 2,
+  media: 1,
+};
+
 export function memoriesView(session) {
-  return session.career.memories.map((m) => ({
-    year: m.year,
-    kind: m.kind,
-    title: m.title,
-    text: m.text,
-  }));
+  // Un même moment peut revenir : trois épisodes de surmenage, deux titres sur
+  // le même circuit. Classés par poids, ces doublons se retrouvaient côte à
+  // côte, mot pour mot — « La rupture · 2031 », « La rupture · 2032 »,
+  // « La rupture · 2034 ». Avoir craqué trois fois est un fait qui compte, mais
+  // il se dit une fois, avec ses dates.
+  const groupes = new Map();
+  session.career.memories.forEach((m, index) => {
+    const cle = `${m.kind}|${m.title}|${m.text}`;
+    const existant = groupes.get(cle);
+    if (existant) {
+      existant.annees.push(m.year);
+      return;
+    }
+    groupes.set(cle, { m, index, annees: [m.year] });
+  });
+
+  return [...groupes.values()]
+    .sort((a, b) => {
+      const pa = POIDS_SOUVENIR[a.m.kind] ?? 2;
+      const pb = POIDS_SOUVENIR[b.m.kind] ?? 2;
+      // À poids égal, l'ordre chronologique : une carrière se raconte dans le
+      // sens où elle a été vécue.
+      return pb - pa || a.index - b.index;
+    })
+    .map(({ m, annees }) => ({
+      year: m.year,
+      // Toutes les années où ce moment s'est produit, la première comprise.
+      annees,
+      occurrences: annees.length,
+      kind: m.kind,
+      title: m.title,
+      text: m.text,
+    }));
 }
 
 /** Offres en attente, avec leurs facteurs explicables (§45, §59). */

@@ -512,6 +512,9 @@ function buildMatchReport(world, career, result, perf) {
     logTimeline(career, world, `${won ? 'Victoire' : 'Défaite'} — ${result.label} contre ${opponentOrg?.name ?? '?'} (${result.scoreA}-${result.scoreB}).`, {
       kind: 'match',
       important: result.stakes >= 0.8,
+      // L'issue est enregistrée comme donnée : le bilan de carrière résume les
+      // saisons en comptant des faits, pas en relisant des phrases (étape 8B).
+      data: { won, stakes: Math.round(result.stakes * 100) / 100 },
     });
   }
   if (result.comeback && won) {

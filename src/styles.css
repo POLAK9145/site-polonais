@@ -958,3 +958,21 @@ details summary {
 .routine-cout.attention { border-color: #7a6330; background: rgba(180, 140, 50, 0.08); }
 .routine-cout.alerte { border-color: #7a3030; background: rgba(160, 50, 50, 0.1); }
 .routine-cout.alerte strong { color: #ff9b8a; }
+
+/* Titre de section avec une action à droite (« Voir le journal complet »). */
+.section-tete {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+}
+.section-tete h2 { margin-bottom: 0; }
+.section-tete .lien { margin-top: 0; white-space: nowrap; }
+
+/* Résumé d'une saison, à côté de l'année. */
+.annee-resume {
+  margin-left: 10px;
+  font-size: 0.78rem;
+  font-weight: 400;
+  opacity: 0.6;
+}
