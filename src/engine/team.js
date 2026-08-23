@@ -98,16 +98,28 @@ export function updateSynergy(world, team, rng, weeks = 1) {
   return target;
 }
 
-/** Qualité du coaching (0..1), utilisée par la progression et les matchs. */
-export function coachQuality(world, team) {
-  if (!team?.coachId) return 0;
-  const c = world.persons[team.coachId];
-  if (!c) return 0;
+/**
+ * Ce que vaut un entraîneur (0..1).
+ *
+ * Une seule définition, pour une seule raison : il en existait trois — celle-ci,
+ * une copie mot pour mot dans `simulation.js`, et une troisième écrite pour le
+ * marché des coachs. Trois copies d'une formule, c'est trois occasions qu'elles
+ * divergent, et un monde où l'on recruterait les entraîneurs sur un critère que
+ * la progression n'utilise pas.
+ */
+export function coachQualityOfPerson(c) {
+  if (!c?.attrs) return 0;
   return clamp(
     (c.attrs.reading * 0.3 + c.attrs.metaSense * 0.25 + c.attrs.communication * 0.25 + c.attrs.leadership * 0.2) / 100,
     0,
     1,
   );
+}
+
+/** Qualité du coaching d'une équipe, utilisée par la progression et les matchs. */
+export function coachQuality(world, team) {
+  if (!team?.coachId) return 0;
+  return coachQualityOfPerson(world.persons[team.coachId]);
 }
 
 /**

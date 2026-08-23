@@ -19,7 +19,10 @@ import {
   effectiveRating,
 } from './person.js';
 import { createOrg, createTeam } from './org.js';
-import { addToRoster, removeFromRoster, computeSynergyTarget, detachFromAllTeams, recordStint } from './team.js';
+import {
+  addToRoster, removeFromRoster, computeSynergyTarget, detachFromAllTeams,
+  recordStint, coachQuality,
+} from './team.js';
 import { progressPerson, updateForm, burnoutPressure } from './progression.js';
 import { decayMetaShock } from './meta.js';
 import { onWeekStart, onWeekEnd, runWeek as runSeasonWeek, ensureSeasonState } from './season.js';
@@ -391,7 +394,7 @@ function runPlayerWeek(session, person, report) {
   const effectiveRoutine = effectiveRoutineOf(career.routine, team);
 
   const learningGame = career.learningGameId ? GAMES_BY_ID[career.learningGameId] : null;
-  const cq = team ? coachQualityOf(world, team) : 0;
+  const cq = team ? coachQuality(world, team) : 0;
   const matchLoad = report.matches.length;
 
   progressPerson(
@@ -472,17 +475,6 @@ function runPlayerWeek(session, person, report) {
 // l'applique : il n'y a qu'une source de vérité pour l'audience (§K). Le
 // ré-export garde les appelants existants — la vue notamment — inchangés.
 export { audienceCeiling } from './reputation.js';
-
-function coachQualityOf(world, team) {
-  if (!team?.coachId) return 0;
-  const c = world.persons[team.coachId];
-  if (!c) return 0;
-  return clamp(
-    (c.attrs.reading * 0.3 + c.attrs.metaSense * 0.25 + c.attrs.communication * 0.25 + c.attrs.leadership * 0.2) / 100,
-    0,
-    1,
-  );
-}
 
 function applyPlayerEconomy(session, person, report) {
   const { world, career } = session;

@@ -24,14 +24,14 @@ import {
   effectiveRating,
 } from './person.js';
 import { createOrg, createTeam } from './org.js';
-import { addToRoster, assignRoles, recordStint } from './team.js';
+import { addToRoster, assignRoles, recordStint, coachQualityOfPerson } from './team.js';
 import { releasePlayer, runNpcTransferWindow, runBenchRecruitment } from './transfers.js';
 import { decayRelations } from './relations.js';
 import { weekOfYear, WEEKS_PER_YEAR } from './time.js';
 import { dissolveOrg } from './events/defs/worldEvents.js';
 import { formAmateurTeams, dissolveFailedAmateurTeams } from './amateur.js';
 import { bestSubFor, playingTimeFactor, runRotation } from './roster.js';
-import { operatingCost, payroll, updateOrgIncome, reinvest, sceneTeamCapacity } from './economy.js';
+import { operatingCost, payroll, updateOrgIncome, reinvest, sceneTeamCapacity, tierReferenceIncome } from './economy.js';
 import { runVisibilityCycle, decayOrgReputation } from './reputation.js';
 import { contextPressure } from './load.js';
 import { isTracing, trace, TRACE } from './trace.js';
@@ -266,6 +266,145 @@ export function retirePerson(world, p, rng) {
   if (fa >= 0) world.freeAgents.splice(fa, 1);
   if (becomesCoach) p.role = 'coach';
   return p;
+}
+
+/**
+ * Les entraîneurs partent aussi (étape 8D).
+ *
+ * `runRetirements` écarte explicitement le STAFF : un coach ne raccrochait donc
+ * jamais. Mesuré après quarante ans, avec le marché des coachs mais sans ce
+ * départ : âge médian des entraîneurs en poste 72 ans, maximum 84, et 56 des
+ * 89 postes encore tenus par les entraîneurs créés à la génération du monde.
+ *
+ * Ce n'est pas seulement invraisemblable, c'est bloquant : sans postes qui se
+ * libèrent, les reconversions n'ont nulle part où aller et le marché ne
+ * distribue rien. La rotation est ce qui permet à un grand joueur d'hier de
+ * prendre la place d'un ancien.
+ */
+export function runCoachRetirements(world, rng) {
+  const partis = [];
+  for (const p of Object.values(world.persons)) {
+    if (p.status !== STATUS.STAFF || p.role !== 'coach') continue;
+    const a = personAge(p, world.week);
+    // Un métier qu'on peut faire plus longtemps que joueur, mais pas indéfiniment.
+    let chance = 0.02;
+    if (a >= 64) chance = 0.45;
+    else if (a >= 56) chance = 0.2;
+    else if (a >= 48) chance = 0.08;
+    if (!rng.chance(chance)) continue;
+
+    for (const team of Object.values(world.teams)) {
+      if (team.coachId === p.id) team.coachId = null;
+    }
+    p.status = STATUS.RETIRED;
+    p.retiredWeek = world.week;
+    p.retirementReason = p.retirementReason ?? 'fin de carrière d’entraîneur';
+    partis.push(p.id);
+  }
+  return partis;
+}
+
+/**
+ * Le marché des coachs (étape 8D).
+ *
+ * LE DÉFAUT CORRIGÉ
+ * -----------------
+ * L'après-carrière existait à moitié. `retirePerson` faisait bien passer une
+ * partie des joueurs en STAFF — mesuré, 113 reconversions sur 642 retraites en
+ * douze ans — mais **aucune équipe ne recrutait jamais de coach**. Ces
+ * reconversions restaient donc sans poste, et la pression démographique les
+ * effaçait dans l'année : le monde produisait des entraîneurs et les jetait
+ * aussitôt.
+ *
+ * Un commentaire de `pruneWorld` disait déjà la moitié du problème — « les
+ * reconversions entraient dans l'écosystème sans jamais pouvoir en sortir » —
+ * et une sortie y avait été ajoutée. Il manquait l'entrée.
+ *
+ * Conséquence mesurée sur quarante ans : la part d'équipes ayant un coach
+ * tombait de 73 % à 33 %. Ce n'est pas cosmétique — la qualité du coaching
+ * nourrit la progression de tout le monde, joueur compris : un monde sans
+ * entraîneurs est un monde où plus personne ne progresse normalement.
+ *
+ * CE QUI EST MODÉLISÉ, ET CE QUI NE L'EST PAS
+ * -------------------------------------------
+ * Le salaire récurrent d'un coach n'est PAS modélisé : `payroll` ne compte que
+ * les contrats de joueurs, et l'y ajouter déplacerait un équilibre économique
+ * validé. L'embauche coûte en revanche une prime d'arrivée réelle, prélevée sur
+ * le budget : une organisation sans le sou n'embauche pas. C'est une dette
+ * assumée et bornée, pas un oubli.
+ */
+export function runCoachMarket(world, rng) {
+  const embauches = [];
+
+  // Les postes : seuls les jeux collectifs ont un entraîneur. C'est la règle de
+  // la génération du monde, et c'est elle qui explique les 73 % de départ — un
+  // joueur solo n'a pas de coach d'équipe. Viser 100 % serait inventer un
+  // besoin qui n'existe pas.
+  const vacants = [];
+  for (const team of Object.values(world.teams)) {
+    if (!team.active || team.isSelfTeam) continue;
+    const game = GAMES_BY_ID[team.gameId];
+    if (!game || game.teamSize <= 1) continue;
+    if (team.coachId && world.persons[team.coachId]) continue;
+    const org = world.orgs[team.orgId];
+    if (!org?.alive) continue;
+    vacants.push({ team, org });
+  }
+  if (vacants.length === 0) return embauches;
+
+  // Les candidats : ceux qui se sont reconvertis et n'ont pas encore de poste.
+  const enPoste = new Set();
+  for (const t of Object.values(world.teams)) {
+    if (t.active && t.coachId) enPoste.add(t.coachId);
+  }
+  const libres = Object.values(world.persons).filter(
+    (p) => p.status === STATUS.STAFF && p.role === 'coach' && !enPoste.has(p.id),
+  );
+  if (libres.length === 0) return embauches;
+
+  // Les meilleures structures servies en premier : c'est ce qui fait qu'un
+  // grand nom d'hier entraîne une grande équipe, et non la première venue.
+  vacants.sort((a, b) => (b.org.tier ?? 1) - (a.org.tier ?? 1) || (b.org.budget ?? 0) - (a.org.budget ?? 0));
+
+  for (const { team, org } of vacants) {
+    const prime = primeEmbaucheCoach(org.tier ?? 1);
+    if ((org.budget ?? 0) < prime) continue;
+
+    // Un entraîneur connaît une scène. Passer d'un jeu à l'autre existe, mais
+    // ce n'est pas la norme, et cela se paie d'une préférence nette.
+    let meilleur = null;
+    let meilleurScore = -Infinity;
+    for (const c of libres) {
+      if (enPoste.has(c.id)) continue;
+      const memeScene = c.gameId === team.gameId;
+      const score =
+        coachQualityOfPerson(c) * 100 +
+        (memeScene ? 30 : 0) +
+        // Un palmarès ouvre les portes des grandes structures.
+        Math.min(20, (c.stats?.titles ?? 0) * 4) +
+        rng.float(0, 8);
+      if (score > meilleurScore) {
+        meilleurScore = score;
+        meilleur = c;
+      }
+    }
+    if (!meilleur) break;
+
+    org.budget -= prime;
+    team.coachId = meilleur.id;
+    meilleur.gameId = team.gameId;
+    meilleur.idleYears = 0;
+    enPoste.add(meilleur.id);
+    org.history.push({ week: world.week, text: `${meilleur.nick} prend en main l'équipe.` });
+    embauches.push({ teamId: team.id, orgId: org.id, coachId: meilleur.id });
+  }
+  return embauches;
+}
+
+/** Ce que coûte l'arrivée d'un entraîneur, à l'échelle des budgets du tier. */
+function primeEmbaucheCoach(tier) {
+  const reference = tierReferenceIncome(tier);
+  return Math.round(reference * 0.04);
 }
 
 /** Arrivée d'une nouvelle génération (§41). */
@@ -755,11 +894,21 @@ export function runYearlyCycle(world, rng) {
   const retired = runRetirements(world, rng);
   const spawned = spawnNewGeneration(world, rng);
   refreshOrgs(world, rng);
+  // Avant l'élagage : sans cela, un entraîneur fraîchement reconverti serait
+  // effacé par la pression démographique la même année, avant d'avoir pu être
+  // recruté par qui que ce soit.
+  // Les départs d'abord : c'est ce qui ouvre les postes que le marché comble.
+  const coachsPartis = runCoachRetirements(world, rng);
+  const coachs = runCoachMarket(world, rng);
   // Les équipes d'entrée qui n'ont rien produit disparaissent : c'est la
   // contrepartie de leur formation libre.
   const folded = dissolveFailedAmateurTeams(world, rng);
   const pruned = pruneWorld(world);
-  return { retired: retired.length, spawned: spawned.length, pruned, folded: folded.length, visibility };
+  return {
+    retired: retired.length, spawned: spawned.length, pruned,
+    folded: folded.length, visibility,
+    coachsRecrutes: coachs.length, coachsPartis: coachsPartis.length,
+  };
 }
 
 /** Formation spontanée d'équipes amateurs, à partir des joueurs disponibles. */

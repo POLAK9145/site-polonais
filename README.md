@@ -169,6 +169,10 @@ d'inscription »).
   surcharge, changement de jeu, effondrement d'organisation.
 - **Vieillissement réel** : pic vers 22-26 ans, déclin mécanique ensuite,
   compensé (ou non) par la lecture du jeu.
+- **Écosystème d'après-carrière** : les joueurs qui raccrochent se reconvertissent
+  en entraîneurs, les entraîneurs finissent eux aussi par partir, et les équipes
+  recrutent sur le marché ainsi ouvert. Après quarante ans, les entraîneurs en
+  poste sont tous d'anciens joueurs, sur la scène qu'ils connaissent.
 - **Coups durs enregistrés par la simulation** : perdre son équipe et rester
   dehors, une année sans que le téléphone sonne, deux mois où plus rien n'a de
   goût. Ces moments existaient déjà dans le moteur ; ils n'étaient simplement

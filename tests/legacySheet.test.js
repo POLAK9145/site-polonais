@@ -30,41 +30,59 @@ initEvents({ force: true });
 /**
  * Trois carrières longues et disputées : c'est là que le résumé se juge.
  *
- * Les couples graine/politique ne sont pas pris au hasard. Un premier jet
- * utilisait trois graines quelconques et mesurait 11 matchs journalisés : le
- * test passait ou échouait selon la carrière tirée, pas selon le code. Ceux-ci
- * ont été choisis parce qu'ils produisent 30 à 300 matchs, et le test 0
- * vérifie que cette prémisse tient toujours — si un jour elle tombe, c'est ce
- * test-là qui doit crier, pas les autres.
+ * Elles sont CHOISIES SUR MESURE, pas nommées à l'avance. Deux versions
+ * précédentes fixaient des couples graine/politique repérés à la main ; à la
+ * première modification du moteur — le marché des coachs, qui déplace le flux
+ * aléatoire du monde — la graine « 8b-t1 » est passée de 304 matchs à 6, et
+ * trois tests ont échoué sans qu'aucun défaut n'existe.
+ *
+ * On cherche donc des carrières par leurs PROPRIÉTÉS. Le test ne peut alors
+ * échouer que pour une vraie raison : soit le résumé fonctionne mal, soit le
+ * moteur ne produit plus du tout de carrières longues — ce qui serait aussi
+ * une information, et c'est le test 0 qui la donnerait.
  */
-const CARRIERES = [
-  { seed: '8b-t1', policyId: 'entertainer' },
-  { seed: '8b-t4', policyId: 'grinder' },
-  { seed: '8b-t8', policyId: 'grinder' },
-];
+const MATCHS_MINIMUM = 25;
+const CARRIERES_VOULUES = 3;
 
-function carriere(seed, policyId = 'grinder', years = 25) {
-  const r = runOneCareer({ seed, years, policyId, keepSession: true });
-  assert.ok(!r.crash, `plantage : ${r.crash?.message}`);
-  return r.session;
+let cacheCarrieres = null;
+
+function carrieresLongues() {
+  if (cacheCarrieres) return cacheCarrieres;
+  const trouvees = [];
+  const politiques = ['entertainer', 'grinder', 'random'];
+  for (let i = 1; i <= 10 && trouvees.length < CARRIERES_VOULUES; i++) {
+    for (const policyId of politiques) {
+      if (trouvees.length >= CARRIERES_VOULUES) break;
+      const seed = `8b-t${i}`;
+      const r = runOneCareer({ seed, years: 25, policyId, keepSession: true });
+      if (r.crash) continue;
+      const matchs = r.session.career.timeline.filter((e) => e.kind === 'match').length;
+      if (matchs >= MATCHS_MINIMUM && r.session.career.timeline.length >= 100) {
+        trouvees.push({ seed, policyId, session: r.session, matchs });
+      }
+    }
+  }
+  cacheCarrieres = trouvees;
+  return trouvees;
 }
 
-test('0 — les carrières de test sont bien assez longues pour qu’il y ait à résumer', () => {
-  for (const c of CARRIERES) {
-    const session = carriere(c.seed, c.policyId);
-    const t = session.career.timeline;
-    const matchs = t.filter((e) => e.kind === 'match').length;
-    assert.ok(
-      matchs >= 25,
-      `${c.seed}/${c.policyId} : ${matchs} matchs seulement — les tests suivants ne prouveraient rien`,
-    );
-    assert.ok(t.length >= 100, `${c.seed}/${c.policyId} : timeline de ${t.length} entrées`);
-  }
+function carriere(entree) {
+  return entree.session;
+}
+
+test('0 — le moteur produit bien des carrières longues à résumer', () => {
+  const trouvees = carrieresLongues();
+  assert.equal(
+    trouvees.length, CARRIERES_VOULUES,
+    `seulement ${trouvees.length} carrières d'au moins ${MATCHS_MINIMUM} matchs sur dix graines × trois ` +
+      `politiques — les tests suivants ne prouveraient rien, et c'est le moteur qu'il faut regarder`,
+  );
 });
 
 test('1 — le résumé ne perd rien de ce qui compte', () => {
-  for (const { seed, policyId } of CARRIERES) {
-    const session = carriere(seed, policyId);
+  for (const entree of carrieresLongues()) {
+    const { seed } = entree;
+    const session = carriere(entree);
     const complet = timelineView(session, { mode: 'complet' });
     const fiche = timelineView(session, { mode: 'fiche' });
 
@@ -81,8 +99,9 @@ test('1 — le résumé ne perd rien de ce qui compte', () => {
 });
 
 test('2 — le résumé de saison compte les matchs réellement joués', () => {
-  for (const { seed, policyId } of CARRIERES) {
-    const session = carriere(seed, policyId);
+  for (const entree of carrieresLongues()) {
+    const { seed } = entree;
+    const session = carriere(entree);
     const fiche = timelineView(session, { mode: 'fiche' });
 
     for (const annee of fiche) {
@@ -110,9 +129,9 @@ test('2 — le résumé de saison compte les matchs réellement joués', () => {
 test("3 — l'issue d'un match est une donnée, pas une phrase à relire", () => {
   // Sans cette donnée, le résumé devrait deviner le résultat en relisant le
   // texte — ce qui casserait à la première reformulation.
-  const session = carriere('8b-t1', 'entertainer');
+  const session = carriere(carrieresLongues()[0]);
   const matchs = session.career.timeline.filter((e) => e.kind === 'match');
-  assert.ok(matchs.length > 20, `trop peu de matchs journalisés (${matchs.length})`);
+  assert.ok(matchs.length >= MATCHS_MINIMUM, `trop peu de matchs journalisés (${matchs.length})`);
   for (const m of matchs) {
     assert.equal(typeof m.data?.won, 'boolean', `match sans issue enregistrée : ${m.text}`);
     // Et l'issue enregistrée doit correspondre à ce que le texte annonce.
@@ -122,8 +141,9 @@ test("3 — l'issue d'un match est une donnée, pas une phrase à relire", () =>
 });
 
 test('4 — aucun moment marquant ne disparaît, les doublons sont regroupés', () => {
-  for (const { seed, policyId } of CARRIERES) {
-    const session = carriere(seed, policyId);
+  for (const entree of carrieresLongues()) {
+    const { seed } = entree;
+    const session = carriere(entree);
     const vue = memoriesView(session);
     const total = session.career.memories.length;
 
@@ -145,8 +165,9 @@ test('5 — les moments les plus lourds arrivent en tête', () => {
   // La fiche n'affiche que les premiers : si l'ordre est mauvais, un titre
   // gagné peut se retrouver derrière une signature de sponsor.
   const POIDS = { title: 5, crisis: 5, comeback: 4, rivalry: 4, betrayal: 4, duo: 3, transfer: 2, media: 1 };
-  for (const { seed, policyId } of CARRIERES) {
-    const vue = memoriesView(carriere(seed, policyId));
+  for (const entree of carrieresLongues()) {
+    const { seed } = entree;
+    const vue = memoriesView(carriere(entree));
     let precedent = Infinity;
     for (const m of vue) {
       const poids = POIDS[m.kind] ?? 2;
@@ -160,8 +181,9 @@ test('6 — la fiche est franchement plus courte que le journal', () => {
   // La propriété qui a motivé l'étape. On la mesure en nombre de lignes
   // affichées, ce qui est ce que le joueur subit.
   const rapports = [];
-  for (const { seed, policyId } of CARRIERES) {
-    const session = carriere(seed, policyId);
+  for (const entree of carrieresLongues()) {
+    const { seed, policyId } = entree;
+    const session = carriere(entree);
     const lignes = (mode) =>
       timelineView(session, { mode }).reduce((a, y) => a + y.entries.length, 0);
     const complet = lignes('complet');
