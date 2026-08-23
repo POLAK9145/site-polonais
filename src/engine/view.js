@@ -22,6 +22,7 @@ import {
   estimatedPotential,
   overallReputation,
   displayName,
+  mods,
   STATUS,
 } from './person.js';
 import { ATTRIBUTE_GROUPS, starString, toStars } from './attributes.js';
@@ -33,7 +34,15 @@ import { sortedStandings } from './competition.js';
 import { currentCompetitionsFor, seasonRankingFor } from './season.js';
 import { describeOffer, OBJECTIVE_LABELS } from './transfers.js';
 import { lifestyleOf, difficultyOf } from './career.js';
-import { audienceCeiling } from './simulation.js';
+import {
+  LOAD_STATES,
+  weeklyIntensity,
+  equilibriumLoad,
+  stateAt,
+  crashRisk,
+} from './load.js';
+import { audienceCeiling, effectiveRoutineOf } from './simulation.js';
+import { routineVolume, restSlotsOf } from './progression.js';
 
 export function formatMoney(v) {
   const n = Math.round(v);
@@ -91,6 +100,165 @@ export function headerView(session) {
     difficulty: difficultyOf(career).label,
     lifestyle: lifestyleOf(career).label,
   };
+}
+
+/**
+ * La charge, telle que le joueur peut la ressentir (étape 8A).
+ *
+ * POURQUOI CETTE VUE EXISTE
+ * -------------------------
+ * La charge accumulée divise la progression (jusqu'à −62 %), ronge le moral, et
+ * met fin à la carrière : mesuré sur 108 carrières, 13 % atteignent « surmené »
+ * ou pire, 10 % connaissent un burnout déclaré, et 14 % se terminent en usure.
+ * Jusqu'ici, aucun écran ne la montrait. Le joueur choisissait quatre créneaux
+ * par semaine sans savoir qu'il accumulait ce qui allait le casser — une
+ * punition sans avertissement, ce que le §83 interdit.
+ *
+ * CE QU'ELLE MONTRE, ET CE QU'ELLE NE MONTRE PAS
+ * ----------------------------------------------
+ * Elle montre ce qu'un joueur sait de son propre corps : dans quel état il est,
+ * si ça monte ou si ça descend, et ce qui pèse. Elle ne révèle aucune donnée
+ * cachée — les plafonds d'attributs, eux, restent invisibles.
+ *
+ * `intensite` est LUE sur `load.lastIntensity`, que le moteur enregistre au
+ * moment où il l'applique : l'interface ne peut pas afficher une charge que la
+ * simulation n'a pas subie. La projection, elle, appelle `equilibriumLoad`,
+ * c'est-à-dire l'inversion de la loi d'accumulation du moteur — pas une courbe
+ * approchée qui finirait par mentir.
+ */
+export function loadView(session) {
+  const { world, career } = session;
+  const person = world.persons[career.personId];
+  const load = person.load ?? null;
+  if (!load) return null;
+
+  const valeur = Math.round(load.value);
+  const etat = load.state;
+
+  // Ce que la semaine écoulée, répétée telle quelle, finit par produire.
+  //
+  // Les cinq entrées sont des FAITS enregistrés par le moteur au moment où il
+  // les a appliqués — volume, matchs, pression, sensibilité, récupération — et
+  // non un contexte reconstitué après coup. Les deux premières tentatives
+  // recalculaient : elles se trompaient de semaine une fois sur trente, parce
+  // que la pression et l'équipe bougent PENDANT la semaine. Un écart invisible
+  // est un mensonge tranquille, et le test 1 le rend impossible.
+  const ctx = {
+    rawFatigue: load.lastVolume ?? 0,
+    matchLoad: load.lastMatchLoad ?? 0,
+    pressure: load.lastPressure ?? 0,
+    sensitivity: mods(person).burnoutRisk,
+    restSlots: load.lastRestSlots ?? 0,
+  };
+  const { raw, factors } = weeklyIntensity(person, ctx);
+  const cible = equilibriumLoad(person, raw);
+  const etatCible = stateAt(cible);
+
+  // Monte, tient, ou redescend : la seule chose que le joueur a besoin de
+  // savoir pour arbitrer, et elle se déduit de la comparaison avec la cible.
+  const ecart = cible - load.value;
+  const tendance = ecart > 3 ? 'monte' : ecart < -3 ? 'descend' : 'stable';
+
+  const risque = crashRisk(person);
+
+  return {
+    valeur,
+    etat,
+    label: ETIQUETTES_CHARGE[etat] ?? etat,
+    // L'intensité réellement appliquée la semaine dernière (un fait).
+    intensite: Math.round((load.lastIntensity ?? 0) * 10) / 10,
+    // La même, recomposée par la vue. Elle n'est pas affichée : elle existe
+    // pour qu'un test puisse constater que l'assemblage n'a pas dérivé.
+    intensiteProjetee: Math.round(raw * 100) / 100,
+    // Et ce que la routine actuelle vise, si rien ne change.
+    cible: Math.round(cible),
+    etatCible,
+    labelCible: ETIQUETTES_CHARGE[etatCible] ?? etatCible,
+    tendance,
+    tenable: cible < 63,
+    eleve: etat === LOAD_STATES.OVERLOADED || etat === LOAD_STATES.DRAINED || etat === LOAD_STATES.BURNOUT,
+    // Risque hebdomadaire de rupture, en clair. Zéro tant qu'on n'est pas haut.
+    risqueRupture: Math.round(risque * 1000) / 10,
+    semainesDansEtat: load.weeksInState,
+    serieChargee: load.heavyStreak,
+    episodes: load.episodes ?? 0,
+    pic: Math.round(load.peak),
+    // Ce qui pèse, dans l'ordre. Les entrées à delta nul sont des modulateurs
+    // (sensibilité, repos) : on les garde, elles expliquent autant.
+    facteurs: factors.map((f) => ({ key: f.key, label: f.label, delta: f.delta })),
+    conseil: conseilCharge(etat, tendance, cible),
+  };
+}
+
+/**
+ * Ce qu'une routine ENVISAGÉE coûterait, à contexte égal (étape 8A).
+ *
+ * `loadView` décrit ce qui est ; celle-ci répond à « et si je changeais ? ».
+ * C'est une hypothèse, et elle est construite comme telle : on ne bouge que ce
+ * que le joueur contrôle — le volume d'entraînement et les créneaux de
+ * récupération — et on garde tel quel ce qu'il subit, c'est-à-dire le rythme de
+ * compétition, la pression de sa structure et sa sensibilité propre. Changer
+ * aussi ces trois-là produirait un joli chiffre sans rapport avec sa situation.
+ *
+ * La projection reste donc juste tant que le contexte ne change pas, ce que le
+ * libellé doit dire — et pas laisser croire à une promesse.
+ */
+export function routineOutlook(session, routine) {
+  const { world, career } = session;
+  const person = world.persons[career.personId];
+  const load = person.load;
+  if (!load) return null;
+  const team = person.teamId ? world.teams[person.teamId] : null;
+  const effective = effectiveRoutineOf(routine, team);
+
+  const { raw } = weeklyIntensity(person, {
+    rawFatigue: routineVolume(effective),
+    restSlots: restSlotsOf(effective),
+    // Subi, donc inchangé.
+    matchLoad: load.lastMatchLoad ?? 0,
+    pressure: load.lastPressure ?? 0,
+    sensitivity: mods(person).burnoutRisk,
+  });
+  const cible = equilibriumLoad(person, raw);
+  const etatCible = stateAt(cible);
+  // Les créneaux impossibles ont été retirés : le joueur doit le savoir, sinon
+  // on lui annonce le coût d'une routine qu'il ne fera pas.
+  const ignores = (routine ?? []).length - effective.length;
+
+  return {
+    cible: Math.round(cible),
+    etatCible,
+    labelCible: ETIQUETTES_CHARGE[etatCible] ?? etatCible,
+    tenable: cible < 63,
+    dangereux: cible >= 79,
+    // Écart avec la charge actuelle : c'est l'arbitrage, pas la valeur absolue.
+    ecart: Math.round(cible - load.value),
+    creneauxIgnores: ignores > 0 ? ignores : 0,
+  };
+}
+
+const ETIQUETTES_CHARGE = {
+  [LOAD_STATES.FRESH]: 'Frais',
+  [LOAD_STATES.TIRED]: 'Fatigué',
+  [LOAD_STATES.PRESSURED]: 'Sous pression',
+  [LOAD_STATES.OVERLOADED]: 'Surmené',
+  [LOAD_STATES.DRAINED]: 'Épuisé',
+  [LOAD_STATES.BURNOUT]: 'Burnout',
+  [LOAD_STATES.RECOVERING]: 'Récupération',
+};
+
+/**
+ * Une phrase, pas un diagnostic. Elle dit ce qui se passe si rien ne change,
+ * et rien de plus : le joueur décide.
+ */
+function conseilCharge(etat, tendance, cible) {
+  if (etat === LOAD_STATES.BURNOUT) return 'Vous avez craqué. Rien ne repartira tant que vous n’aurez pas récupéré.';
+  if (etat === LOAD_STATES.RECOVERING) return 'Vous remontez. Reprendre trop vite vous y ramènera.';
+  if (cible >= 79) return 'Cette routine ne tient pas. À ce rythme, vous finirez par craquer.';
+  if (cible >= 63) return 'Cette routine vous mène au surmenage. Tenable quelques mois, pas des années.';
+  if (tendance === 'monte') return 'Ça monte. Vous n’êtes pas encore en danger, mais vous montez.';
+  if (tendance === 'descend') return 'Vous récupérez.';
+  return 'Vous tenez ce rythme sans vous abîmer.';
 }
 
 /** Profil détaillé : les 6 familles, sans jamais révéler les plafonds réels. */

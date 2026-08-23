@@ -142,6 +142,64 @@ const ACCUMULATION = 1;
  */
 const DECAY = 0.06;
 
+/** Capacité d'évacuation propre au joueur. */
+function resilienceOf(person) {
+  return 0.8 + (1 - (person.hidden?.burnoutFloor ?? 0.5)) * 0.45;
+}
+
+/**
+ * Ce que l'organisme évacue à une charge donnée.
+ *
+ * Extrait de `updateLoad` pour que l'inversion ci-dessous porte sur la MÊME
+ * formule que la simulation. Réécrire cette expression ailleurs reviendrait à
+ * prédire au joueur une trajectoire que le moteur ne suit pas.
+ */
+function drainAt(value, resilience) {
+  return DECAY * value * (1 + (value / 100) ** 2 * 3) * resilience;
+}
+
+/**
+ * Où cette intensité, tenue indéfiniment, finit par stabiliser la charge.
+ *
+ * C'est l'inverse de la loi d'accumulation : on cherche la charge v telle que
+ * ce que la semaine ajoute égale ce que l'organisme évacue,
+ *
+ *     (intensité − SUSTAINABLE) × ACCUMULATION  =  drainAt(v, résilience)
+ *
+ * L'évacuation étant strictement croissante en v, la solution est unique et se
+ * trouve par dichotomie. On ne devine pas, on n'approxime pas une courbe :
+ * on résout l'équation du moteur.
+ *
+ * C'est la seule information de charge réellement actionnable pour le joueur.
+ * Un chiffre du jour ne dit pas si la routine choisie est tenable ; celui-ci
+ * répond exactement à la question « et si je continue comme ça ? ».
+ */
+export function equilibriumLoad(person, intensity) {
+  const excess = Math.max(0, intensity - SUSTAINABLE) * ACCUMULATION;
+  if (excess <= 0) return 0;
+  const resilience = resilienceOf(person);
+  // La charge est bornée à 100 : au-delà de ce que l'évacuation peut compenser,
+  // il n'y a pas d'équilibre et la réponse honnête est « ça ne tient pas ».
+  if (excess >= drainAt(100, resilience)) return 100;
+  let lo = 0;
+  let hi = 100;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (drainAt(mid, resilience) < excess) lo = mid;
+    else hi = mid;
+  }
+  return Math.round(((lo + hi) / 2) * 10) / 10;
+}
+
+/** L'état correspondant à une charge donnée, en montée. */
+export function stateAt(value) {
+  let state = LOAD_STATES.FRESH;
+  for (const step of LADDER) {
+    if (value >= step.up) state = step.state;
+  }
+  return state;
+}
+
 /** État de charge neuf. */
 export function createLoadState() {
   return {
@@ -153,6 +211,11 @@ export function createLoadState() {
     heavyStreak: 0,
     longestStreak: 0,
     peak: 0,
+    lastIntensity: 0,
+    lastMatchLoad: 0,
+    lastPressure: 0,
+    lastVolume: 0,
+    lastRestSlots: 0,
     episodes: 0,
     lastEpisodeWeek: null,
     // Semaines cumulées passées dans les états hauts, pour l'audit.
@@ -250,6 +313,23 @@ export function updateLoad(person, ctx = {}, weeks = 1) {
   const beforeState = load.state;
 
   const { raw, factors } = weeklyIntensity(person, ctx);
+  // Intensité réellement appliquée cette semaine. C'est un FAIT, pas une
+  // formule : l'interface le lit au lieu de le recalculer, et ne peut donc pas
+  // afficher une charge que le moteur n'a pas subie (étape 8A).
+  load.lastIntensity = Math.round(raw * 100) / 100;
+  load.lastMatchLoad = ctx.matchLoad ?? 0;
+  // La pression du contexte telle qu'elle a été appliquée. Enregistrée plutôt
+  // que recalculée par l'interface : elle dépend des résultats de la saison et
+  // de la réputation, qui bougent PENDANT la semaine. Recalculée après coup,
+  // elle donnait une intensité différente de celle réellement subie une
+  // semaine sur trente — un écart invisible, donc un mensonge tranquille.
+  load.lastPressure = Math.round((ctx.pressure ?? 0) * 1000) / 1000;
+  // Idem pour le volume et les créneaux de récupération : la routine effective
+  // dépend de l'équipe, et l'équipe peut changer au cours de la semaine.
+  // Reconstitués après coup, ils décrivaient parfois une autre semaine que
+  // celle qui a réellement eu lieu.
+  load.lastVolume = Math.round((ctx.rawFatigue ?? 0) * 100) / 100;
+  load.lastRestSlots = ctx.restSlots ?? 0;
 
   // Semaines chargées consécutives. Cette mémoire ne pèse plus sur la charge
   // elle-même mais sur le **risque de rupture** (`crashRisk`), et le compteur
@@ -287,8 +367,7 @@ export function updateLoad(person, ctx = {}, weeks = 1) {
   // au-delà — le grinder est à 10, hors charge de match et pression — n'avait
   // plus d'équilibre du tout et la charge montait jusqu'au plafond. Le terme
   // quadratique porte ce plafond à 24, hors de portée des intensités atteignables.
-  const resilience = 0.8 + (1 - (person.hidden?.burnoutFloor ?? 0.5)) * 0.45;
-  const drain = DECAY * load.value * (1 + (load.value / 100) ** 2 * 3) * resilience;
+  const drain = drainAt(load.value, resilienceOf(person));
 
   load.value = clamp(load.value + (excess - drain) * weeks, 0, 100);
   load.peak = Math.max(load.peak, load.value);
@@ -534,6 +613,11 @@ export function loadSnapshot(person) {
     heavyStreak: l.heavyStreak,
     longestStreak: l.longestStreak,
     peak: Math.round(l.peak * 10) / 10,
+    lastIntensity: l.lastIntensity ?? 0,
+    lastMatchLoad: l.lastMatchLoad ?? 0,
+    lastPressure: l.lastPressure ?? 0,
+    lastVolume: l.lastVolume ?? 0,
+    lastRestSlots: l.lastRestSlots ?? 0,
     episodes: l.episodes ?? 0,
     weeksHigh: l.weeksHigh ?? 0,
   };

@@ -7,6 +7,8 @@ import {
   offersView,
   goalsView,
   timelineView,
+  loadView,
+  routineOutlook,
   relationsView,
   formatMoney,
 } from '../../engine/view.js';
@@ -31,7 +33,7 @@ export default function CareerScreen() {
 
   return (
     <div className="screen career">
-      <HeaderPanel head={head} />
+      <HeaderPanel head={head} session={session} />
 
       {state.notice && (
         <div className="notice" onClick={actions.clearNotice}>
@@ -62,7 +64,7 @@ export default function CareerScreen() {
   );
 }
 
-function HeaderPanel({ head }) {
+function HeaderPanel({ head, session }) {
   return (
     <header className="header">
       <div className="header-main">
@@ -97,7 +99,75 @@ function HeaderPanel({ head }) {
         <Bar label="Fatigue" value={head.fatigue} invert />
         <Bar label="Stress" value={head.stress} invert />
       </div>
+
+      <ChargeBloc session={session} />
     </header>
+  );
+}
+
+/**
+ * La charge accumulée (étape 8A).
+ *
+ * Elle décidait de la progression, du moral et de la fin de carrière sans
+ * jamais s'afficher. Ce bloc dit trois choses, et rien d'autre : où vous en
+ * êtes, où votre rythme actuel vous emmène, et ce qui pèse.
+ */
+function ChargeBloc({ session }) {
+  const charge = loadView(session);
+  const [ouvert, setOuvert] = useState(false);
+  if (!charge) return null;
+
+  const fleche = charge.tendance === 'monte' ? '▲' : charge.tendance === 'descend' ? '▼' : '—';
+
+  return (
+    <div className={`charge ${charge.eleve ? 'charge-haute' : ''}`}>
+      <div className="charge-tete">
+        <span className="charge-label">Charge</span>
+        <strong className="charge-etat">{charge.label}</strong>
+        <span className="charge-tendance" title={`la charge ${charge.tendance}`}>{fleche}</span>
+        <span className="muted charge-valeur">{charge.valeur}</span>
+      </div>
+
+      <div className="bar-track charge-track">
+        <div
+          className={`bar-fill ${charge.valeur > 63 ? 'bad' : charge.valeur > 46 ? 'warn' : 'good'}`}
+          style={{ width: `${charge.valeur}%` }}
+        />
+        {/* Repère : là où le rythme actuel vous stabilise, si rien ne change. */}
+        <div className="charge-cible" style={{ left: `${charge.cible}%` }} title={`à ce rythme : ${charge.cible} — ${charge.labelCible}`} />
+      </div>
+
+      <p className={`charge-conseil ${charge.tenable ? '' : 'alerte'}`}>{charge.conseil}</p>
+
+      {charge.risqueRupture > 0 && (
+        <p className="charge-risque">
+          Risque de rupture : {charge.risqueRupture} % par semaine
+          {charge.serieChargee > 0 && ` · ${charge.serieChargee} semaines chargées d’affilée`}
+        </p>
+      )}
+
+      <button className="lien" onClick={() => setOuvert((v) => !v)}>
+        {ouvert ? 'Masquer le détail' : 'Qu’est-ce qui pèse ?'}
+      </button>
+
+      {ouvert && (
+        <div className="charge-detail">
+          <ul>
+            {charge.facteurs.map((f) => (
+              <li key={f.key}>
+                <span>{f.label}</span>
+                {f.delta ? <strong>{f.delta > 0 ? `+${f.delta}` : f.delta}</strong> : null}
+              </li>
+            ))}
+          </ul>
+          <p className="muted">
+            À ce rythme, votre charge se stabilise vers {charge.cible} ({charge.labelCible}).
+            {charge.episodes > 0 && ` Vous avez déjà craqué ${charge.episodes} fois.`}
+            {charge.pic > charge.valeur && ` Maximum atteint : ${charge.pic}.`}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -235,6 +305,38 @@ function RoutineEditor({ session }) {
           </span>
         </div>
       ))}
+      <RoutineCout session={session} routine={routine} />
+    </div>
+  );
+}
+
+/**
+ * Ce que la routine choisie coûte, annoncé AVANT de la subir (étape 8A).
+ *
+ * C'est ici que se prend la décision — quatre créneaux par semaine — et c'est
+ * ici que le joueur n'avait aucune information. Un joueur qui se détruit doit
+ * pouvoir le lire sur l'écran où il choisit, pas le découvrir cinq ans plus
+ * tard dans son bilan de carrière.
+ */
+function RoutineCout({ session, routine }) {
+  const projection = routineOutlook(session, routine);
+  if (!projection) return null;
+  const ton = projection.dangereux ? 'alerte' : projection.tenable ? '' : 'attention';
+  return (
+    <div className={`routine-cout ${ton}`}>
+      <strong>
+        À ce rythme : {projection.cible} · {projection.labelCible}
+      </strong>
+      <span className="muted small">
+        {projection.ecart > 3
+          ? `soit ${projection.ecart} points de charge de plus qu’aujourd’hui`
+          : projection.ecart < -3
+            ? `soit ${-projection.ecart} points de moins qu’aujourd’hui`
+            : 'à peu près là où vous en êtes'}
+        {' · '}à contexte égal (matchs et pression inchangés)
+        {projection.creneauxIgnores > 0 &&
+          ` · ${projection.creneauxIgnores} créneau(x) sans effet faute d’équipe`}
+      </span>
     </div>
   );
 }

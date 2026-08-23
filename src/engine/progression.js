@@ -81,6 +81,21 @@ export function rawWeeklyVolume(routine) {
 }
 
 /** Créneaux de récupération d'une routine. */
+/**
+ * Volume brut d'une routine : ce que la semaine demande avant récupération.
+ *
+ * Extrait pour que l'interface puisse annoncer au joueur ce qu'une routine
+ * coûte AVANT qu'il la choisisse, sans que personne réécrive la somme (8A).
+ */
+export function routineVolume(routine) {
+  let volume = 0;
+  for (const id of routine) {
+    const act = ACTIVITIES_BY_ID[id];
+    if ((act?.fatigue ?? 0) > 0) volume += act.fatigue;
+  }
+  return volume;
+}
+
 export function restSlotsOf(routine) {
   let slots = 0;
   for (const id of routine) {
@@ -206,17 +221,18 @@ function applyConditionEffects(person, routine, weeks, ctx, rng) {
   let fatigue = 0;
   let stress = 0;
   let morale = 0;
-  let rawFatigue = 0;
+  // Volume brut : ce que la semaine a demandé, avant récupération. C'est la
+  // mesure d'intensité que consomme la charge — un `rest` ne doit pas
+  // « annuler » l'intensité de la semaine, seulement aider à la digérer.
+  // Calculé par `routineVolume`, que l'interface appelle aussi pour annoncer
+  // le coût d'une routine avant de la choisir : une seule somme, un seul sens.
+  const rawFatigue = routineVolume(routine);
   for (const id of routine) {
     const act = ACTIVITIES_BY_ID[id];
     if (!act) continue;
     fatigue += act.fatigue ?? 0;
     stress += act.stress ?? 0;
     morale += act.morale ?? 0;
-    // Volume brut : ce que la semaine a demandé, avant récupération. C'est la
-    // mesure d'intensité que consomme la charge — un `rest` ne doit pas
-    // « annuler » l'intensité de la semaine, seulement aider à la digérer.
-    if ((act.fatigue ?? 0) > 0) rawFatigue += act.fatigue;
   }
   // Les matchs coûtent, surtout en LAN.
   fatigue += (ctx.matchLoad ?? 0) * 1.8;

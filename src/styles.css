@@ -870,3 +870,91 @@ details summary {
     padding: 18px;
   }
 }
+
+/* --- Charge accumulée (étape 8A) -------------------------------------------
+   Elle décidait de la progression, du moral et de la fin de carrière sans
+   jamais s'afficher. Elle est traitée comme une jauge à part, plus grande que
+   Moral/Fatigue/Stress, parce qu'elle porte une conséquence plus lourde. */
+.charge {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line, #22304a);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.charge-haute {
+  border-color: #7a3030;
+  background: rgba(160, 50, 50, 0.08);
+}
+.charge-tete {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.charge-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  opacity: 0.65;
+}
+.charge-etat { font-size: 1.02rem; }
+.charge-tendance { opacity: 0.7; font-size: 0.85rem; }
+.charge-valeur { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* Le repère de cible doit rester lisible par-dessus le remplissage. */
+.charge-track { position: relative; overflow: visible; }
+.charge-cible {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: #e8e8e8;
+  opacity: 0.85;
+  transform: translateX(-1px);
+}
+.charge-conseil { margin: 8px 0 0; font-size: 0.9rem; opacity: 0.85; }
+.charge-conseil.alerte { color: #ff9b8a; opacity: 1; }
+.charge-risque { margin: 4px 0 0; font-size: 0.82rem; color: #ff9b8a; }
+.charge-detail ul { list-style: none; padding: 0; margin: 10px 0 6px; }
+.charge-detail li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  font-size: 0.87rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+.charge-detail strong { font-variant-numeric: tabular-nums; }
+.charge-detail p { font-size: 0.83rem; margin: 8px 0 0; }
+
+/* Bouton qui se comporte comme un lien : « Qu'est-ce qui pèse ? ». */
+.lien {
+  margin-top: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent, #7fb2ff);
+  font-size: 0.83rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.lien:hover { opacity: 0.8; }
+
+/* Coût de la routine envisagée : l'information doit être là où se prend la
+   décision, pas seulement dans le bilan de fin de carrière. */
+.routine-cout {
+  grid-column: 1 / -1;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line, #22304a);
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.routine-cout.attention { border-color: #7a6330; background: rgba(180, 140, 50, 0.08); }
+.routine-cout.alerte { border-color: #7a3030; background: rgba(160, 50, 50, 0.1); }
+.routine-cout.alerte strong { color: #ff9b8a; }

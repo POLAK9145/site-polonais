@@ -37,6 +37,14 @@ const LOAD_ORDER = [
   'episodes',
   'lastEpisodeWeek',
   'weeksHigh',
+  // Ajouté en 8A, en FIN de liste : une sauvegarde antérieure a un tableau plus
+  // court, `unpackLoad` laisse alors le champ à zéro plutôt que de décaler
+  // tous les autres.
+  'lastIntensity',
+  'lastMatchLoad',
+  'lastPressure',
+  'lastVolume',
+  'lastRestSlots',
 ];
 const LOAD_STATE_ORDER = [
   'frais',

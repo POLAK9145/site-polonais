@@ -171,6 +171,11 @@ d'inscription »).
   compensé (ou non) par la lecture du jeu.
 - **Fin de carrière** : score en 7 dimensions, archétype, récit généré
   uniquement à partir de faits survenus, carte de carrière partageable.
+- **Charge accumulée visible** : l'état ressenti (frais → burnout), sa
+  tendance, ce qui pèse, et surtout où la routine choisie mène si on la tient.
+  La projection est l'inversion exacte de la loi d'accumulation du moteur, et
+  les cinq entrées du calcul sont des faits enregistrés par la simulation, pas
+  un contexte reconstitué après coup.
 - **Sauvegarde locale** compacte, versionnée, avec reprise automatique.
 
 ## Ce qui n'existe pas encore

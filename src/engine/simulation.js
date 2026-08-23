@@ -360,6 +360,24 @@ export function advanceWorldOnly(session) {
   return report;
 }
 
+/**
+ * La routine réellement appliquée, une fois retirés les créneaux impossibles.
+ *
+ * Extrait pour que l'interface annonce le coût de la routine EFFECTIVE et non
+ * celui de la routine affichée (étape 8A). Un joueur sans équipe ne peut pas
+ * faire de scrims : son choix est silencieusement remplacé, et lui annoncer la
+ * charge du choix impossible serait un mensonge de plus.
+ */
+export function effectiveRoutineOf(routine, team) {
+  const gardes = (routine ?? []).filter((id) => {
+    const act = ACTIVITIES_BY_ID[id];
+    if (!act) return false;
+    if (act.requiresTeam && !team) return false;
+    return true;
+  });
+  return gardes.length > 0 ? gardes : ['mechanics', 'rest'];
+}
+
 function runPlayerWeek(session, person, report) {
   const { world, career, rng } = session;
   const game = GAMES_BY_ID[person.gameId];
@@ -367,15 +385,7 @@ function runPlayerWeek(session, person, report) {
 
   decayMetaShock(person, 1);
 
-  const routine = career.routine.filter((id) => {
-    const act = ACTIVITIES_BY_ID[id];
-    if (!act) return false;
-    // Un joueur sans équipe ne peut pas faire de scrims : le choix est
-    // silencieusement remplacé, jamais appliqué comme s'il fonctionnait.
-    if (act.requiresTeam && !team) return false;
-    return true;
-  });
-  const effectiveRoutine = routine.length > 0 ? routine : ['mechanics', 'rest'];
+  const effectiveRoutine = effectiveRoutineOf(career.routine, team);
 
   const learningGame = career.learningGameId ? GAMES_BY_ID[career.learningGameId] : null;
   const cq = team ? coachQualityOf(world, team) : 0;
