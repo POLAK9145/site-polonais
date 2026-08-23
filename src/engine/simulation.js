@@ -43,7 +43,10 @@ import {
   evaluateInterest,
   buildOffer as buildOfferRaw,
 } from './transfers.js';
-import { createCareer, difficultyOf, lifestyleOf, logTimeline, addMemory, trackGamePlayed, trackOrg } from './career.js';
+import {
+  createCareer, difficultyOf, lifestyleOf, logTimeline, addMemory,
+  trackGamePlayed, trackOrg, trackHardMoments,
+} from './career.js';
 import { adjustRelation, REL_TAGS } from './relations.js';
 import { createEffects } from './events/effects.js';
 import {
@@ -448,9 +451,14 @@ function runPlayerWeek(session, person, report) {
   if (person.followers > (person.stats.peakFollowers ?? 0)) {
     person.stats.peakFollowers = person.followers;
   }
-  if (!team) career.counters.weeksWithoutTeam = (career.counters.weeksWithoutTeam ?? 0) + 1;
+  // L'équipe telle qu'elle est MAINTENANT : `team` a été lu en début de
+  // semaine et peut ne plus refléter la réalité.
+  const equipeFin = person.teamId ? world.teams[person.teamId] : null;
+  const aUneEquipe = !!equipeFin && equipeFin.active && !equipeFin.isSelfTeam;
+  if (!aUneEquipe) career.counters.weeksWithoutTeam = (career.counters.weeksWithoutTeam ?? 0) + 1;
   else career.counters.weeksWithoutTeam = 0;
   trackLowPoint(career, world, rating);
+  trackHardMoments(career, world, person, { hasRealTeam: aUneEquipe });
 
   // Statut le plus élevé jamais atteint. Le statut courant ne suffit pas :
   // à la retraite il vaut « retired », ce qui effaçait toute trace d'être
@@ -584,8 +592,13 @@ function checkContractExpiry(session, person, report) {
   const orgName = world.orgs[person.orgId]?.name ?? 'votre organisation';
   releasePlayer(world, person.id, world.week, 'fin de contrat');
   career.counters.timesReleased++;
+  // Un contrat qu'on ne prolonge pas n'est pas une écriture administrative :
+  // c'est une structure qui ne veut plus de vous, et c'est ainsi que le joueur
+  // le vit. Classé « contrat », ce moment était invisible au récit — et pire,
+  // `buildNarrative` cherchant la PREMIÈRE entrée de type contrat pouvait
+  // ouvrir la carrière sur « Fin de contrat avec X, non prolongé » (8C).
   logTimeline(career, world, `Fin de contrat avec ${orgName}, non prolongé.`, {
-    kind: 'contract',
+    kind: 'setback',
     important: true,
   });
   report.messages.push(`Votre contrat avec ${orgName} est arrivé à terme. Vous êtes sans équipe.`);

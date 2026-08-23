@@ -140,6 +140,128 @@ export function logTimeline(career, world, text, { kind = 'info', important = fa
   return career.timeline[career.timeline.length - 1];
 }
 
+/**
+ * Les coups durs que la SIMULATION produit (étape 8C).
+ *
+ * LE DÉFAUT CORRIGÉ
+ * -----------------
+ * Tous les « coups durs » enregistrés jusqu'ici venaient d'ÉVÉNEMENTS scriptés
+ * — un surmenage, un banc, une organisation qui coule. Rien ne venait de la
+ * simulation elle-même, alors que c'est elle qui produit les vrais. Résultat
+ * mesuré sur 108 carrières : 23 % n'avaient aucun point bas identifiable, et
+ * parmi celles-là, 80 % avaient été licenciées au moins une fois (médiane
+ * TROIS fois), 64 % avaient vu un contrat ne pas être prolongé, et 10 sur 25
+ * avaient fini leur carrière usées. Une seule sur vingt-cinq n'avait
+ * réellement rien vécu de dur.
+ *
+ * Le jeu racontait donc une carrière sans accroc à un joueur viré trois fois.
+ * Ce n'est pas un défaut de mesure : le bilan final construit sa phrase « Tout
+ * n'a pas été droit… » à partir de ces mêmes entrées, et restait muet.
+ *
+ * CE QUI EST FAIT ICI, ET CE QUI NE L'EST PAS
+ * -------------------------------------------
+ * On n'ajoute AUCUN malheur : on enregistre ceux qui ont déjà lieu. Rien ici ne
+ * consomme d'aléatoire et rien ne modifie l'état du monde — seule la trace
+ * change. Une exécution de la baseline doit donc rendre exactement les mêmes
+ * niveaux, titres et legacy qu'avant, et seules les mesures narratives bougent.
+ */
+export function trackHardMoments(career, world, person, { hasRealTeam }) {
+  // 1. Perdre son équipe sans l'avoir choisi. Le détecteur est ici, au niveau
+  //    de la carrière, et non dans chacune des fonctions du monde qui peuvent
+  //    en être la cause — licenciement, remplacement, fermeture d'une scène.
+  //    Une seule garde couvre alors tous les chemins, présents et à venir.
+  //
+  //    L'état précédent est MÉMORISÉ sur la carrière et non relu en début de
+  //    semaine : une première version comparait le début et la fin du tour de
+  //    jeu, et ne voyait donc rien quand l'équipe était perdue entre deux
+  //    semaines — c'est-à-dire dans la plupart des cas, puisque le monde tourne
+  //    à côté. Le test qui construisait un licenciement l'a montré : zéro
+  //    entrée enregistrée.
+  const avaitUneEquipe = career.counters.avaitUneEquipe ?? false;
+  career.counters.avaitUneEquipe = hasRealTeam;
+  const semainesSansEquipe = career.counters.weeksWithoutTeam ?? 0;
+
+  if (avaitUneEquipe && !hasRealTeam) {
+    career.counters.sansEquipeDepuis = world.week;
+  }
+  if (hasRealTeam) career.counters.sansEquipeDepuis = null;
+
+  // On n'annonce pas la perte le jour même. Une première version le faisait, et
+  // le test l'a prise en flagrant délit : « Écarté de l'effectif » la même
+  // semaine que « Signature chez Crimson » — un transfert raconté comme un
+  // licenciement. Quitter une structure pour une autre n'est pas un coup dur ;
+  // se retrouver dehors et y rester en est un. On attend donc que la situation
+  // dure avant de la nommer.
+  const debut = career.counters.sansEquipeDepuis;
+  if (debut != null && world.week - debut === SANS_EQUIPE_CONFIRME) {
+    // Si la raison précise a déjà été journalisée au début de cette période —
+    // une fin de contrat, par exemple — on ne la redit pas en plus vague.
+    const dejaDit = career.timeline.some(
+      (e) => e.kind === 'setback' && e.week >= debut - 1 && e.week <= world.week,
+    );
+    if (!dejaDit) {
+      logTimeline(career, world, 'Sans équipe depuis un mois. Personne ne rappelle.', {
+        kind: 'setback',
+        important: true,
+      });
+    }
+  }
+
+  // 2. La traversée du désert. Une année entière sans équipe est un fait dont
+  //    le moteur se sert déjà pour décider d'une fin de carrière subie ; il
+  //    doit aussi pouvoir se raconter.
+  if (semainesSansEquipe >= 52 && !career.flags.desert_en_cours) {
+    career.flags.desert_en_cours = true;
+    logTimeline(career, world, 'Un an sans équipe. Le téléphone ne sonne plus.', {
+      kind: 'setback',
+      important: true,
+    });
+    addMemory(career, world, {
+      kind: 'crisis',
+      title: 'La traversée du désert',
+      text: 'Une année entière sans personne pour vouloir de vous. On finit par se demander si on va revenir.',
+    });
+  }
+  if (semainesSansEquipe === 0) career.flags.desert_en_cours = false;
+
+  // 3. L'effondrement du moral. Distinct du surmenage, qui est physique : on
+  //    peut être frais et n'avoir plus aucune envie. Le seuil est celui dont
+  //    le moteur se sert déjà pour la retraite « usure », et l'hystérésis
+  //    évite qu'un moral qui oscille au plancher ne journalise chaque semaine.
+  if (person.morale < MORAL_PLANCHER) {
+    career.counters.semainesMoralBas = (career.counters.semainesMoralBas ?? 0) + 1;
+    if (career.counters.semainesMoralBas === MORAL_SEMAINES && !career.flags.moral_effondre) {
+      career.flags.moral_effondre = true;
+      logTimeline(career, world, 'Plus rien n’avait de goût. Deux mois à jouer sans y croire.', {
+        kind: 'setback',
+        important: true,
+      });
+      addMemory(career, world, {
+        kind: 'crisis',
+        title: 'Le passage à vide',
+        text: 'Ce n’était pas le corps. C’était l’envie. Se lever pour jouer était devenu un effort.',
+      });
+    }
+  } else {
+    career.counters.semainesMoralBas = 0;
+    if (person.morale > MORAL_SORTIE) career.flags.moral_effondre = false;
+  }
+}
+
+/**
+ * Combien de semaines dehors avant que « écarté » veuille dire quelque chose.
+ * En dessous, c'est un transfert : on quitte une équipe et on en rejoint une
+ * autre, ce qui n'a rien d'un coup dur.
+ */
+const SANS_EQUIPE_CONFIRME = 4;
+
+/** Moral au plancher : le seuil que `maybeRetire` utilise pour l'usure. */
+const MORAL_PLANCHER = 8;
+/** Deux mois : un mauvais mois arrive à tout le monde, deux sont un creux. */
+const MORAL_SEMAINES = 8;
+/** On ne re-journalise pas tant que le moral n'est pas franchement remonté. */
+const MORAL_SORTIE = 25;
+
 /** Moment marquant (§28) : conservé même quand la timeline est résumée. */
 export function addMemory(career, world, { kind, title, text, data = null }) {
   career.memories.push({ week: world.week, year: yearOf(world.week), kind, title, text, data });

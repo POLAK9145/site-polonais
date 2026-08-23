@@ -350,10 +350,36 @@ export function buildNarrative(world, career, legacy) {
   parts.push(
     `Vous arrêtez en ${endYear}, après ${legacy.careerYears} ans de carrière, ${person.stats.matches} matchs et ${Math.round(person.stats.earnings).toLocaleString('fr-FR')} € de gains.`,
   );
+
+  // Comment on s'arrête fait partie de l'histoire (étape 8C). Le moteur
+  // distingue une fin choisie d'une fin subie — le corps qui lâche, plus
+  // personne qui appelle, l'envie qui s'en va — et le bilan n'en disait rien :
+  // toutes les carrières se terminaient de la même façon, sur un décompte de
+  // matchs. La phrase n'est ajoutée que si la fin a été SUBIE : « vous avez
+  // décidé d'arrêter » n'apprend rien à qui vient de décider d'arrêter.
+  const finSubie = FINS_SUBIES[career.retirementPath];
+  if (finSubie) parts.push(finSubie);
   parts.push(legacy.archetype.desc);
 
   return parts;
 }
+
+/**
+ * Les fins que le joueur n'a pas choisies, dites avec les mots de ce qui s'est
+ * réellement passé. Les clés sont exactement celles que `maybeRetire` pose.
+ */
+export const FINS_SUBIES = {
+  'usure':
+    'Vous n’avez pas décidé d’arrêter. L’envie était partie depuis longtemps, et un jour vous n’êtes pas revenu.',
+  'plus aucune équipe intéressée':
+    'Vous n’avez pas décidé d’arrêter. Plus personne n’appelait, et à un moment il a bien fallu l’admettre.',
+  'sortie de la compétition':
+    'Vous n’avez pas décidé d’arrêter. La compétition a continué sans vous, des années, jusqu’à ce que revenir n’ait plus de sens.',
+  'charge accumulée':
+    'Vous n’avez pas décidé d’arrêter. Le corps a lâché avant la tête, et il n’a plus suivi.',
+  'âge':
+    'Vous avez tenu jusqu’au bout de ce que ce métier permet.',
+};
 
 function lowerFirst(s) {
   return s ? s.charAt(0).toLowerCase() + s.slice(1) : s;

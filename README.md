@@ -169,8 +169,15 @@ d'inscription »).
   surcharge, changement de jeu, effondrement d'organisation.
 - **Vieillissement réel** : pic vers 22-26 ans, déclin mécanique ensuite,
   compensé (ou non) par la lecture du jeu.
+- **Coups durs enregistrés par la simulation** : perdre son équipe et rester
+  dehors, une année sans que le téléphone sonne, deux mois où plus rien n'a de
+  goût. Ces moments existaient déjà dans le moteur ; ils n'étaient simplement
+  jamais nommés, et le bilan racontait une carrière sans accroc à un joueur
+  licencié trois fois.
 - **Fin de carrière** : score en 7 dimensions, archétype, récit généré
-  uniquement à partir de faits survenus, carte de carrière partageable. La
+  uniquement à partir de faits survenus, carte de carrière partageable. Le récit
+  dit aussi comment on s'est arrêté — décision, usure, corps qui lâche, ou plus
+  personne qui appelle. La
   fiche résume les saisons au lieu de dérouler le journal — le titre gagné n'y
   pèse plus autant que le 312ᵉ match de poule — et le journal complet reste
   accessible d'un clic.
