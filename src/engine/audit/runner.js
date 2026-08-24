@@ -159,7 +159,11 @@ export function runOneCareer({
         }
       }
 
-      if (onWeek) onWeek(session, weeks);
+      // Le rapport de la semaine est passé au crochet : sans lui, une mesure
+      // du rythme ne peut regarder que la timeline, qui n'enregistre que le
+      // notable — et conclurait qu'une semaine de match sans incident est une
+      // semaine vide.
+      if (onWeek) onWeek(session, weeks, report);
     }
   } catch (err) {
     crash = { message: err?.message ?? String(err), stack: (err?.stack ?? '').split('\n')[1]?.trim() };
