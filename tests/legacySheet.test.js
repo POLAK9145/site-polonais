@@ -177,9 +177,15 @@ test('5 — les moments les plus lourds arrivent en tête', () => {
   }
 });
 
-test('6 — la fiche est franchement plus courte que le journal', () => {
-  // La propriété qui a motivé l'étape. On la mesure en nombre de lignes
-  // affichées, ce qui est ce que le joueur subit.
+test('6 — la fiche retire les matchs sans enjeu, et rien d’autre', () => {
+  // La propriété qui a motivé l'étape : la page de bilan faisait 16 770 pixels
+  // parce qu'elle déroulait tout. Mais « plus courte » n'est pas une propriété
+  // vérifiable en soi — une carrière dont la timeline est faite de contrats et
+  // de revers ne PEUT pas être beaucoup raccourcie, et c'est correct.
+  //
+  // Une première version comparait un ratio global à 0,6 : elle est tombée dès
+  // que la composition des carrières a changé, sans qu'aucun défaut n'existe.
+  // On vérifie donc le mécanisme exactement, plutôt qu'un seuil.
   const rapports = [];
   for (const entree of carrieresLongues()) {
     const { seed, policyId } = entree;
@@ -188,13 +194,23 @@ test('6 — la fiche est franchement plus courte que le journal', () => {
       timelineView(session, { mode }).reduce((a, y) => a + y.entries.length, 0);
     const complet = lignes('complet');
     const fiche = lignes('fiche');
-    rapports.push({ seed, policyId, complet, fiche });
-    assert.ok(fiche <= complet, `${seed} : la fiche est plus longue que le journal`);
+    const matchsSansEnjeu = session.career.timeline.filter(
+      (e) => e.kind === 'match' && !e.important,
+    ).length;
+
+    assert.equal(
+      fiche, complet - matchsSansEnjeu,
+      `${seed}/${policyId} : la fiche a retiré autre chose que des matchs sans enjeu`,
+    );
+    rapports.push({ seed, policyId, complet, fiche, matchsSansEnjeu });
   }
-  const total = rapports.reduce((a, r) => a + r.complet, 0);
-  const resume = rapports.reduce((a, r) => a + r.fiche, 0);
+
+  // Et le mécanisme doit servir à quelque chose : au moins une des carrières
+  // longues retenues doit voir sa fiche nettement allégée, sinon c'est que le
+  // moteur ne journalise plus les matchs et que le résumé est devenu inutile.
+  const meilleure = Math.max(...rapports.map((r) => r.matchsSansEnjeu / Math.max(1, r.complet)));
   assert.ok(
-    resume < total * 0.6,
-    `le résumé ne réduit presque rien : ${resume}/${total} lignes — ${JSON.stringify(rapports)}`,
+    meilleure >= 0.4,
+    `aucune carrière n'est allégée de plus de ${Math.round(meilleure * 100)} % — ${JSON.stringify(rapports)}`,
   );
 });

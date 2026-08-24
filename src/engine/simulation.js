@@ -45,10 +45,11 @@ import {
   collectOffers,
   evaluateInterest,
   buildOffer as buildOfferRaw,
+  OBJECTIVE_LABELS,
 } from './transfers.js';
 import {
   createCareer, difficultyOf, lifestyleOf, logTimeline, addMemory,
-  trackGamePlayed, trackOrg, trackHardMoments,
+  trackGamePlayed, trackOrg, trackHardMoments, startSeasonRecord, closeSeasonRecord,
 } from './career.js';
 import { adjustRelation, REL_TAGS } from './relations.js';
 import { createEffects } from './events/effects.js';
@@ -108,6 +109,11 @@ export function createSession(config) {
   // « équipe de soi-même » pour que le joueur puisse entrer en tournoi.
   const game = GAMES_BY_ID[person.gameId];
   if (game.teamSize === 1) createSelfTeam(world, rng, person);
+
+  // La première saison s'ouvre ici : sans cela, il n'y aurait de bilan qu'à
+  // partir de la deuxième, et la saison des débuts — celle dont on se souvient
+  // le plus — n'en aurait jamais eu (étape 9A).
+  startSeasonRecord(career, world, person, { rating: baseRating(person, game) });
 
   const session = {
     world,
@@ -286,6 +292,31 @@ export function advanceWeek(session) {
     const cycle = runYearlyCycle(world, rng);
     report.messages.push(...seasonSummaryMessages(world, career, cycle));
     career.counters.seasonsCompeted++;
+
+    // Le bilan de la saison du joueur (étape 9A). Il est clos AVANT d'ouvrir la
+    // suivante, sans quoi la photographie de départ écraserait celle qu'on est
+    // en train de comparer.
+    const org = world.orgs[person.orgId];
+    const bilan = closeSeasonRecord(career, world, person, {
+      rating: baseRating(person, GAMES_BY_ID[person.gameId]),
+    });
+    if (bilan) {
+      bilan.headline = seasonHeadline(person, bilan, org);
+      bilan.objective = evaluateSeasonObjective(world, person, bilan);
+      bilan.club = org?.name ?? null;
+      if (bilan.objective?.prime > 0) {
+        career.money += bilan.objective.prime;
+        person.stats.earnings = (person.stats.earnings ?? 0) + bilan.objective.prime;
+      }
+      report.season = bilan;
+      // Le titre de presse n'entre PAS dans la timeline : c'est un résumé, pas
+      // un fait, et `career.seasons` le conserve déjà. L'y écrire ajoutait une
+      // ligne éditoriale par saison — vingt sur une carrière — qui diluait le
+      // journal sans rien apprendre de nouveau.
+    }
+    startSeasonRecord(career, world, person, {
+      rating: baseRating(person, GAMES_BY_ID[person.gameId]),
+    });
   }
   onWeekEnd(world, rng);
 
@@ -579,6 +610,25 @@ function summarizeCompetition(world, career, comp, person) {
     // chose, sans quoi une carrière « sans titre » se met à raconter qu'elle
     // en a remporté sept.
     const major = comp.tierLevel >= 3;
+
+    // Et il ne suffit pas que l'ÉQUIPE gagne : `recordTitles` ne crédite que
+    // les titulaires. Un remplaçant recevait donc la ligne « Titre : … »,
+    // marquée importante, sans que son compteur bouge — et le bilan final
+    // annonçait « Vous remportez 3 compétitions » à un joueur dont
+    // `stats.titles` valait zéro. Deux sources qui se contredisent sur le même
+    // fait ; c'est le §72 qui l'interdit.
+    const equipe = world.teams[person.teamId];
+    const titulaire = !!equipe?.roster?.includes(person.id);
+
+    if (!titulaire) {
+      // Le fait est réel et mérite d'être dit — mais ce n'est pas votre titre.
+      logTimeline(career, world, `${comp.name} remporté par votre équipe, depuis le banc.`, {
+        kind: 'result',
+        important: major,
+      });
+      return { name: comp.name, rank, champion: true, benched: true, prizePool: comp.prizePool };
+    }
+
     logTimeline(career, world, major ? `Titre : ${comp.name}.` : `Vainqueur de ${comp.name}.`, {
       kind: major ? 'title' : 'minor_title',
       important: major,
@@ -599,6 +649,91 @@ function seasonSummaryMessages(world, career, cycle) {
   return [
     `Fin de saison ${yearOf(world.week)} : ${cycle.retired} retraites, ${cycle.spawned} nouveaux joueurs sur les scènes.`,
   ];
+}
+
+/**
+ * Le bilan de saison du joueur (étape 9A).
+ *
+ * L'objectif que la structure a fixé en signant est ici confronté aux faits :
+ * c'est la seule promesse contractuelle du jeu, et elle n'était jusqu'ici
+ * jamais évaluée. Une organisation qui vous demande les playoffs et ne vous dit
+ * jamais si vous y êtes arrivé ne vous demande rien du tout.
+ */
+function evaluateSeasonObjective(world, person, bilan) {
+  const objectif = person.contract?.objectives;
+  if (!objectif) return null;
+  const org = world.orgs[person.orgId];
+  const tier = org?.tier ?? 1;
+  let tenu = null;
+  switch (objectif) {
+    case 'titre_international':
+      tenu = (person.stats.internationalTitles ?? 0) > 0 && bilan.titles > 0;
+      break;
+    case 'playoffs':
+    case 'top4':
+      // On ne dispose pas d'un classement archivé par saison : ce que l'on
+      // sait avec certitude, c'est ce que la saison a produit. Un titre ou une
+      // finale valent playoffs ; rien de tout cela, non.
+      tenu = bilan.titles > 0 || bilan.finals > 0;
+      break;
+    case 'montee':
+      tenu = bilan.titles > 0 || bilan.minorTitles >= 2;
+      break;
+    case 'progression':
+      tenu = bilan.progression == null ? null : bilan.progression >= 0;
+      break;
+    default:
+      tenu = null;
+  }
+  return {
+    id: objectif,
+    label: OBJECTIVE_LABELS[objectif] ?? objectif,
+    tenu,
+    // Une prime existe quand l'objectif est tenu et que le contrat en prévoit.
+    prime: tenu && person.contract?.bonusPerTitle ? Math.round(person.contract.bonusPerTitle * (tier / 2)) : 0,
+  };
+}
+
+/**
+ * Le titre que la presse aurait donné à votre saison.
+ *
+ * Construit uniquement à partir de ce qui s'est produit — jamais un compliment
+ * générique. Une saison sans temps de jeu ne reçoit pas la même phrase qu'une
+ * saison à trente matchs, et c'est exactement ce que le joueur veut lire.
+ */
+function seasonHeadline(person, bilan, org) {
+  const nom = person.nick;
+  const club = org?.name ?? 'sa structure';
+
+  // Une saison sans match n'est pas forcément une saison perdue : à seize ans,
+  // sans équipe, on progresse énormément en s'entraînant. Mesuré, 13 % des
+  // saisons se jouent sans le moindre match, et les premières d'entre elles
+  // rapportent jusqu'à quinze points de niveau. Les appeler « une saison pour
+  // rien » — ce que faisait la première version — insulte la saison de débuts,
+  // celle dont on se souvient le plus.
+  if (bilan.matches === 0) {
+    if ((bilan.progression ?? 0) >= 2) return `${nom} travaille loin des projecteurs`;
+    return `${nom}, une saison pour rien`;
+  }
+
+  if (bilan.titles > 0 && bilan.mvps > 0) return `${nom} règne sur la saison`;
+  if (bilan.titles > 0) return `${nom} soulève enfin un trophée avec ${club}`;
+  if (bilan.finals > 0) return `Si près : ${nom} tombe en finale`;
+  if (bilan.matches <= 4) return `${nom}, l'homme invisible de ${club}`;
+
+  // SEUILS RELEVÉS SUR LA DISTRIBUTION RÉELLE, pas à l'intuition.
+  // Sur 150 saisons jouées : taux de victoire p25 = 9 %, médiane 25 %,
+  // p75 = 48 %, p90 = 85 % ; progression p50 = +0,3 point, p90 = +7,2.
+  //
+  // La première version plaçait « saison noire » sous 30 % de victoires —
+  // c'est-à-dire au-dessus de la médiane du jeu. Résultat : 38 % des saisons
+  // étaient annoncées comme des catastrophes, et une saison parfaitement
+  // ordinaire recevait le titre le plus dur du lot.
+  if (bilan.winRate <= 10 && bilan.matches >= 8) return `Saison noire pour ${nom} et ${club}`;
+  if (bilan.winRate >= 70) return `${nom} porte ${club} toute la saison`;
+  if ((bilan.progression ?? 0) >= 7) return `${nom} a franchi un cap`;
+  if ((bilan.progression ?? 0) <= -1.5) return `${nom} recule, et ça se voit`;
+  return `${nom} tient son rang à ${club}`;
 }
 
 function checkContractExpiry(session, person, report) {

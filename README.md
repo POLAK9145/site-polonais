@@ -185,6 +185,10 @@ d'inscription »).
   goût. Ces moments existaient déjà dans le moteur ; ils n'étaient simplement
   jamais nommés, et le bilan racontait une carrière sans accroc à un joueur
   licencié trois fois.
+- **Bilan de saison** : chaque saison se referme sur ce qu'elle a produit —
+  un titre de presse tiré des faits, matchs, victoires, progression, l'objectif
+  fixé par la structure tenu ou raté, et les gains. Tous les chiffres sont des
+  différences entre le début et la fin de saison, jamais un compteur parallèle.
 - **Fin de carrière** : score en 7 dimensions, archétype, récit généré
   uniquement à partir de faits survenus, carte de carrière partageable. Le récit
   dit aussi comment on s'est arrêté — décision, usure, corps qui lâche, ou plus

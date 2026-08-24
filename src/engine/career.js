@@ -141,6 +141,86 @@ export function logTimeline(career, world, text, { kind = 'info', important = fa
 }
 
 /**
+ * La saison du JOUEUR (étape 9A).
+ *
+ * LE DÉFAUT CORRIGÉ
+ * -----------------
+ * À la fin d'une saison, le joueur apprenait ceci : « Fin de saison 2035 :
+ * 12 retraites, 40 nouveaux joueurs sur les scènes. » C'est-à-dire rien sur SA
+ * saison. Ni ses matchs, ni ses victoires, ni son classement, ni si l'objectif
+ * que sa structure lui avait fixé en le signant était tenu.
+ *
+ * Une carrière de vingt ans, c'est vingt saisons. Sans bilan, ce sont mille
+ * semaines qui se ressemblent : le joueur ne peut ni se souvenir d'une saison,
+ * ni les comparer, ni savoir s'il a progressé.
+ *
+ * COMMENT
+ * -------
+ * On photographie les compteurs cumulés au début de chaque saison et on fait
+ * la différence à la fin. Aucun compteur parallèle n'est tenu : deux sources
+ * pour un même nombre finissent toujours par diverger, et c'est le total
+ * cumulé qui fait foi.
+ */
+export function startSeasonRecord(career, world, person, { rating = null } = {}) {
+  career.seasonStart = {
+    week: world.week,
+    year: yearOf(world.week),
+    matches: person.stats.matches ?? 0,
+    wins: person.stats.wins ?? 0,
+    titles: person.stats.titles ?? 0,
+    minorTitles: person.stats.minorTitles ?? 0,
+    finals: person.stats.finals ?? 0,
+    mvps: person.stats.mvps ?? 0,
+    earnings: person.stats.earnings ?? 0,
+    followers: person.followers ?? 0,
+    // Le niveau du jour : sans lui, la progression d'une saison serait
+    // toujours vide, et « avez-vous progressé cette année ? » est la première
+    // question qu'un joueur se pose.
+    rating,
+    orgName: world.orgs[person.orgId]?.name ?? null,
+  };
+  return career.seasonStart;
+}
+
+/**
+ * Ce que la saison écoulée a produit, en différences.
+ * Retourne `null` si aucune saison n'a été ouverte — au tout début d'une
+ * carrière, par exemple. Mieux vaut ne rien afficher qu'un bilan inventé.
+ */
+export function closeSeasonRecord(career, world, person, { rating = null } = {}) {
+  const debut = career.seasonStart;
+  if (!debut) return null;
+  const diff = (k) => Math.max(0, (person.stats[k] ?? 0) - (debut[k] ?? 0));
+  const matches = diff('matches');
+  const wins = diff('wins');
+  const bilan = {
+    year: debut.year,
+    weeks: world.week - debut.week,
+    matches,
+    wins,
+    losses: Math.max(0, matches - wins),
+    winRate: matches > 0 ? Math.round((wins / matches) * 100) : null,
+    titles: diff('titles'),
+    minorTitles: diff('minorTitles'),
+    finals: diff('finals'),
+    mvps: diff('mvps'),
+    earnings: Math.round((person.stats.earnings ?? 0) - (debut.earnings ?? 0)),
+    followersGained: Math.round((person.followers ?? 0) - (debut.followers ?? 0)),
+    ratingStart: debut.rating,
+    ratingEnd: rating,
+    progression: debut.rating != null && rating != null ? Math.round((rating - debut.rating) * 10) / 10 : null,
+    orgStart: debut.orgName,
+    orgEnd: world.orgs[person.orgId]?.name ?? null,
+  };
+  career.seasons = career.seasons ?? [];
+  career.seasons.push(bilan);
+  // On ne garde pas vingt-cinq bilans complets en mémoire pour rien : les
+  // derniers suffisent à l'affichage, le reste vit dans la timeline.
+  if (career.seasons.length > 30) career.seasons.shift();
+  return bilan;
+}
+
+/**
  * Les coups durs que la SIMULATION produit (étape 8C).
  *
  * LE DÉFAUT CORRIGÉ
