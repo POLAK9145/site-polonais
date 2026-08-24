@@ -976,3 +976,25 @@ details summary {
   font-weight: 400;
   opacity: 0.6;
 }
+
+/* Le fil rouge d'une carrière (étape 8E) : la rivalité en cours, puis celles
+   qui se sont éteintes, avec ce qu'elles ont réellement produit. */
+.rivalite-active {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  border-left: 3px solid #b4553f;
+  background: rgba(180, 85, 63, 0.08);
+  border-radius: 0 8px 8px 0;
+}
+.rivalite-tete { display: flex; align-items: center; gap: 10px; }
+.rivalite-tete strong { font-size: 1.05rem; }
+.rivalite-active p { margin: 5px 0 0; }
+.devant { color: #ff9b8a; }
+.derriere { color: #7fd6a1; }
+.rivalite-passees { list-style: none; padding: 0; margin: 12px 0 0; }
+.rivalite-passees li {
+  padding: 6px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.9rem;
+}
+.egalite { color: #e0c56b; }

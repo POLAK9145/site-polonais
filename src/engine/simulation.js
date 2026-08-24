@@ -508,6 +508,30 @@ function buildMatchReport(world, career, result, perf) {
   career.counters.recentScores = scores;
 
   const won = result.winnerId === perf.teamId;
+
+  // Les affrontements réels avec le rival (étape 8E).
+  //
+  // Une rivalité ne comptait rien de ce qu'elle produisait : `actes` était posé
+  // à 1 à sa naissance et n'était jamais incrémenté — un compteur mort, que
+  // l'interface aurait affiché comme un fait. Or les affrontements ont bien
+  // lieu, et `match.js` module déjà la performance quand on croise son rival ;
+  // ils n'étaient simplement comptés nulle part.
+  //
+  // On compte donc les CONFRONTATIONS — les matchs réellement joués contre lui
+  // — et non des « actes ». Le mot compte : sur une longue rivalité de même
+  // division, on se croise plusieurs dizaines de fois, et appeler cela des
+  // chapitres serait faux. Rien ici ne change le déroulement d'un match.
+  if (career.rivalId && opponent) {
+    const surLeTerrain =
+      opponent.roster?.includes(career.rivalId) || opponent.subs?.includes(career.rivalId);
+    if (surLeTerrain) {
+      career.rivalry = career.rivalry ?? { depuis: world.week, actes: 1 };
+      career.rivalry.confrontations = (career.rivalry.confrontations ?? 0) + 1;
+      career.rivalry.victoires = (career.rivalry.victoires ?? 0) + (won ? 1 : 0);
+      career.rivalry.derniere = world.week;
+    }
+  }
+
   if (result.stakes >= 0.55) {
     logTimeline(career, world, `${won ? 'Victoire' : 'Défaite'} — ${result.label} contre ${opponentOrg?.name ?? '?'} (${result.scoreA}-${result.scoreB}).`, {
       kind: 'match',

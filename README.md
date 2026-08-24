@@ -164,7 +164,10 @@ d'inscription »).
 - **Marché des transferts** explicable, avec besoins réels, budgets,
   philosophies de recrutement et refus motivés.
 - **Relations** avec historique daté, rivalité qui se construit sur plusieurs
-  années et peut se résoudre en respect ou en rancune définitive.
+  années et peut se résoudre en respect ou en rancune définitive. Le fil rouge
+  d'une carrière est visible pendant qu'on le vit : depuis quand, l'écart de
+  niveau avec le rival, les confrontations réellement jouées et leur bilan, et
+  comment chaque rivalité passée s'est éteinte.
 - **Chaînes narratives** : ascension, rivalité, duo, conflit de vestiaire,
   surcharge, changement de jeu, effondrement d'organisation.
 - **Vieillissement réel** : pic vers 22-26 ans, déclin mécanique ensuite,

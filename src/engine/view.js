@@ -26,10 +26,10 @@ import {
   STATUS,
 } from './person.js';
 import { ATTRIBUTE_GROUPS, starString, toStars } from './attributes.js';
-import { formatDate, formatPhase, yearOf, weekOfYear, isTransferWindow } from './time.js';
+import { formatDate, formatPhase, yearOf, weekOfYear, isTransferWindow, WEEKS_PER_YEAR } from './time.js';
 import { teamStrength, rosterPersons, teamNeeds } from './team.js';
 import { metaLabel, patchLabel } from './meta.js';
-import { relationsOf, describeRelation, REL_TAG_LABELS } from './relations.js';
+import { relationsOf, describeRelation, REL_TAG_LABELS, rivalryStatus } from './relations.js';
 import { sortedStandings } from './competition.js';
 import { currentCompetitionsFor, seasonRankingFor } from './season.js';
 import { describeOffer, OBJECTIVE_LABELS } from './transfers.js';
@@ -416,6 +416,73 @@ export function relationsView(session, { limit = 12 } = {}) {
       };
     })
     .filter(Boolean);
+}
+
+/**
+ * La rivalité, vue du joueur (étape 8E).
+ *
+ * LE DÉFAUT CORRIGÉ
+ * -----------------
+ * Le moteur en sait beaucoup — qui, depuis quand, combien d'affrontements,
+ * comment elle s'est éteinte — et il archive les rivalités passées. 85 % des
+ * carrières en connaissent une. L'interface, elle, affichait une liste plate de
+ * relations où le rival n'était qu'une bordure de couleur. Le fil rouge d'une
+ * carrière, que le bilan final raconte à la retraite, était invisible PENDANT
+ * qu'on le vivait.
+ *
+ * Renvoie `null` s'il n'y a jamais rien eu : une carrière sans rival est une
+ * carrière sans rival, et l'écran doit le dire plutôt que d'inventer.
+ */
+export function rivalryView(session) {
+  const { world, career } = session;
+  const person = world.persons[career.personId];
+  const statut = rivalryStatus(world, person, career);
+  const passees = career.pastRivalries ?? [];
+  if (!statut.rival && passees.length === 0) return null;
+
+  const anneesDepuis = (depuis) =>
+    depuis == null ? null : Math.round(((world.week - depuis) / WEEKS_PER_YEAR) * 10) / 10;
+
+  const enCours = statut.vivante && statut.rival
+    ? {
+        nick: statut.rival.nick,
+        id: statut.rival.id,
+        depuis: yearOf(career.rivalry?.depuis ?? world.week),
+        annees: anneesDepuis(career.rivalry?.depuis) ?? 0,
+        // Tension : ce que vaut la relation, du côté négatif. Une rivalité
+        // respectueuse et une rancune tenace ne se racontent pas pareil.
+        tension: Math.round(statut.tension ?? 0),
+        valeur: Math.round(statut.valeur ?? 0),
+        label: describeRelation(statut.valeur ?? 0, ['rival']),
+        confrontations: career.rivalry?.confrontations ?? 0,
+        victoires: career.rivalry?.victoires ?? 0,
+        equipe: statut.rival.orgId ? world.orgs[statut.rival.orgId]?.name ?? null : null,
+        niveau: Math.round(baseRating(statut.rival, GAMES_BY_ID[statut.rival.gameId])),
+        // Le rival est-il devant ou derrière ? C'est la question qu'on se pose.
+        ecart: Math.round(
+          baseRating(statut.rival, GAMES_BY_ID[statut.rival.gameId]) -
+            baseRating(person, GAMES_BY_ID[person.gameId]),
+        ),
+      }
+    : null;
+
+  return {
+    enCours,
+    // Une rivalité éteinte mais non archivée : le rival existe encore, la
+    // tension est retombée. On le dit, plutôt que de la faire disparaître.
+    finieMaisRecente: !statut.vivante && statut.rival && statut.raison !== 'aucune'
+      ? { nick: statut.rival.nick, raison: statut.raison }
+      : null,
+    passees: passees.map((r) => ({
+      nick: world.persons[r.rivalId]?.nick ?? 'un adversaire',
+      raison: r.raison,
+      annee: yearOf(r.week),
+      duree: r.depuis != null ? Math.round(((r.week - r.depuis) / WEEKS_PER_YEAR) * 10) / 10 : null,
+      confrontations: r.confrontations ?? 0,
+      victoires: r.victoires ?? 0,
+    })),
+    total: passees.length + (enCours ? 1 : 0),
+  };
 }
 
 /** Page Monde (§66). */

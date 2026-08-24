@@ -345,6 +345,11 @@ export function closeRivalry(career, world, { raison, week }) {
     week,
     depuis: career.rivalry?.depuis ?? null,
     actes: career.rivalry?.actes ?? 0,
+    // Ce que la rivalité a réellement produit sur le terrain (étape 8E) :
+    // sans ces deux nombres, une rivalité archivée ne gardait aucune trace de
+    // ce qui s'y était joué.
+    confrontations: career.rivalry?.confrontations ?? 0,
+    victoires: career.rivalry?.victoires ?? 0,
   };
   career.pastRivalries = career.pastRivalries ?? [];
   career.pastRivalries.push(entry);

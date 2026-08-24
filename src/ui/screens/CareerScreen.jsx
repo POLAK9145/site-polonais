@@ -10,6 +10,7 @@ import {
   loadView,
   routineOutlook,
   relationsView,
+  rivalryView,
   formatMoney,
 } from '../../engine/view.js';
 import { ACTIVITIES, SLOTS_PER_WEEK } from '../../data/training.js';
@@ -341,6 +342,91 @@ function RoutineCout({ session, routine }) {
   );
 }
 
+/**
+ * Le fil rouge d'une carrière (étape 8E).
+ *
+ * Le moteur suit la rivalité en détail et archive celles qui se sont éteintes ;
+ * le bilan final en fait un paragraphe. Mais pendant la carrière, rien ne
+ * l'affichait : le rival n'était qu'une bordure de couleur dans une liste.
+ */
+function RivaliteBloc({ rivalite }) {
+  if (!rivalite) return null;
+  const { enCours, passees, finieMaisRecente } = rivalite;
+
+  const bilan = (c, v) => {
+    if (!c) return 'jamais affronté';
+    const d = c - v;
+    return `${c} confrontation${c > 1 ? 's' : ''} · ${v} victoire${v > 1 ? 's' : ''}, ${d} défaite${d > 1 ? 's' : ''}`;
+  };
+
+  return (
+    <section className="card rivalite">
+      <div className="section-tete">
+        <h2>Rivalités</h2>
+        <span className="muted small">
+          {rivalite.total} depuis le début de votre carrière
+        </span>
+      </div>
+
+      {enCours ? (
+        <div className="rivalite-active">
+          <div className="rivalite-tete">
+            <strong>{enCours.nick}</strong>
+            <span className="chip static">{enCours.label}</span>
+          </div>
+          <p className="muted small">
+            Depuis {enCours.depuis}
+            {enCours.annees >= 1 && ` · ${enCours.annees} ans`}
+            {enCours.equipe ? ` · ${enCours.equipe}` : ' · sans équipe'}
+            {' · niveau '}{enCours.niveau}
+            {/* L'égalité parfaite est le fait le PLUS parlant d'une rivalité —
+                `rivalCandidate` choisit quelqu'un de votre niveau — et une
+                première version la passait sous silence en ne testant que
+                l'écart non nul. */}
+            <strong className={enCours.ecart > 0 ? 'devant' : enCours.ecart < 0 ? 'derriere' : 'egalite'}>
+              {enCours.ecart > 0
+                ? ` — il a ${enCours.ecart} point${enCours.ecart > 1 ? 's' : ''} d’avance sur vous`
+                : enCours.ecart < 0
+                  ? ` — vous avez ${-enCours.ecart} point${-enCours.ecart > 1 ? 's' : ''} d’avance sur lui`
+                  : ' — exactement votre niveau'}
+            </strong>
+          </p>
+          <p className="small">{bilan(enCours.confrontations, enCours.victoires)}</p>
+        </div>
+      ) : (
+        <p className="muted small">
+          {finieMaisRecente
+            ? `Plus de rivalité en cours — ${finieMaisRecente.nick} : ${finieMaisRecente.raison}.`
+            : 'Plus de rivalité en cours.'}
+        </p>
+      )}
+
+      {passees.length > 0 && (
+        <ul className="rivalite-passees">
+          {passees.map((r, i) => (
+            <li key={i}>
+              <strong>{r.nick}</strong>
+              <span className="muted">
+                {' '}· {r.annee}
+                {r.duree ? ` · ${r.duree} ans` : ''} · {RAISONS[r.raison] ?? r.raison}
+              </span>
+              <span className="muted small"> — {bilan(r.confrontations, r.victoires)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** Comment une rivalité s'éteint, dite avec des mots plutôt qu'un code. */
+const RAISONS = {
+  'retraité': 'il a raccroché',
+  'autre scène': 'il est parti jouer à autre chose',
+  'réconciliée': 'la tension est retombée',
+  'disparu': 'on a perdu sa trace',
+};
+
 function ProfileTab({ prof, head, session }) {
   return (
     <>
@@ -484,7 +570,8 @@ function TeamTab({ team, session }) {
 
 function RelationsTab({ session }) {
   const relations = relationsView(session);
-  if (relations.length === 0) {
+  const rivalite = rivalryView(session);
+  if (relations.length === 0 && !rivalite) {
     return (
       <section className="card">
         <h2>Aucune relation marquante</h2>
@@ -496,6 +583,7 @@ function RelationsTab({ session }) {
   }
   return (
     <>
+      <RivaliteBloc rivalite={rivalite} />
       {relations.map((r) => (
         <section key={r.id} className={`card relation ${r.isRival ? 'rival' : ''}`}>
           <div className="relation-head">
