@@ -219,6 +219,21 @@ nombre de fonctionnalités (§77, §87).
 
 ---
 
+## Y jouer
+
+```bash
+npm install && npm run dev
+```
+
+Pour une page unique, sans rien installer côté joueur :
+
+```bash
+npm run build && node tools/bundle-page.js --out=circuit.html
+```
+
+Tout y est — feuille de style, moteur, interface — et les sauvegardes passent
+par le `localStorage` du navigateur.
+
 ## Outils
 
 ```bash
