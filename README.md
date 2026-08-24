@@ -189,6 +189,11 @@ d'inscription »).
   un titre de presse tiré des faits, matchs, victoires, progression, l'objectif
   fixé par la structure tenu ou raté, et les gains. Tous les chiffres sont des
   différences entre le début et la fin de saison, jamais un compteur parallèle.
+- **La fin de carrière est un moment, pas un onglet** : quand la carrière
+  s'arrête — l'âge, le corps, ou plus personne qui appelle — le jeu ouvre
+  lui-même la page de fin et annonce ce qui vient de se passer, avec la raison
+  enregistrée par le moteur. Un joueur retraité ne se voit plus proposer une
+  routine d'entraînement.
 - **Fin de carrière** : score en 7 dimensions, archétype, récit généré
   uniquement à partir de faits survenus, carte de carrière partageable. Le récit
   dit aussi comment on s'est arrêté — décision, usure, corps qui lâche, ou plus
@@ -284,7 +289,9 @@ Couverture notable :
 - le récit final ne mentionne jamais un titre qui n'a pas été gagné ;
 - les conséquences affichées après un choix sont celles qui ont été
   appliquées, pas celles qui étaient écrites dans l'événement — bornes et
-  difficulté comprises — et la fenêtre reste ouverte pour les montrer.
+  difficulté comprises — et la fenêtre reste ouverte pour les montrer ;
+- une carrière qui s'arrête d'elle-même conduit le joueur à sa page de fin,
+  et chaque raison d'arrêt possible a bien une phrase pour la dire.
 
 ---
 

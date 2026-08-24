@@ -34,6 +34,7 @@ import { sortedStandings } from './competition.js';
 import { currentCompetitionsFor, seasonRankingFor } from './season.js';
 import { describeOffer, OBJECTIVE_LABELS } from './transfers.js';
 import { lifestyleOf, difficultyOf } from './career.js';
+import { FINS_SUBIES } from './legacy.js';
 import {
   LOAD_STATES,
   weeklyIntensity,
@@ -813,4 +814,50 @@ export function goalsView(session) {
     goals.push({ label: `Objectif du club : ${objective}`, done: false, contract: true });
   }
   return goals.slice(0, 5);
+}
+
+/**
+ * Comment la carrière s'est arrêtée (étape 9C).
+ *
+ * LE DÉFAUT CORRIGÉ
+ * -----------------
+ * Le moteur savait déjà tout : la raison de l'arrêt, l'année, l'âge, et un
+ * récit complet écrit à l'étape 8C qui distinguait une fin choisie d'une fin
+ * subie. Rien de tout cela n'arrivait au joueur. Une carrière qui se terminait
+ * d'elle-même poussait une seule phrase — « Votre carrière de joueur s'achève »
+ * — au milieu du rapport de la semaine, puis l'écran continuait d'afficher un
+ * bouton « Semaine suivante », une routine d'entraînement et des objectifs à
+ * atteindre. Vérifié en jouant : un joueur retraité restait devant un panneau
+ * qui lui proposait de s'entraîner, et la page de fin de carrière n'était
+ * accessible qu'en remarquant qu'un onglet avait changé de nom.
+ *
+ * Dans un jeu de carrière, la fin EST le moment. La manquer, c'est manquer le
+ * seul instant où tout ce qui a été joué prend un sens.
+ *
+ * Cette vue ne calcule rien : elle relit ce que `retireCareer` a enregistré.
+ */
+export function retirementView(session) {
+  const { world, career } = session;
+  if (!career.retired) return null;
+  const person = world.persons[career.personId];
+  const path = career.retirementPath ?? null;
+  // Une fin choisie et une fin subie ne se racontent pas de la même façon, et
+  // le moteur fait déjà la différence : on ne la refabrique pas ici.
+  const subie = FINS_SUBIES[path] ?? null;
+  const week = career.retiredWeek ?? world.week;
+  return {
+    path,
+    chosen: !subie,
+    year: yearOf(week),
+    age: Math.floor(personAge(person, week)),
+    years: Math.max(1, Math.round((week - career.startWeek) / WEEKS_PER_YEAR)),
+    matches: person.stats.matches,
+    titles: person.stats.titles,
+    // Le titre dit ce qui arrive, la phrase dit pourquoi. Une fin choisie n'a
+    // pas besoin qu'on lui explique sa propre décision. Et aller jusqu'à la
+    // limite d'âge n'est pas une carrière brisée : c'est la seule fin subie
+    // qu'un joueur puisse revendiquer, elle ne se titre pas comme un échec.
+    title: !subie ? 'Vous raccrochez' : path === 'âge' ? 'Vous êtes allé au bout' : 'Votre carrière s’arrête là',
+    text: subie,
+  };
 }

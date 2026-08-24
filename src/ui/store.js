@@ -22,6 +22,7 @@ import {
   retireCareer,
 } from '../engine/simulation.js';
 import { saveSession, loadSession, listSaves, deleteSave, exportSave, importSave } from '../engine/save.js';
+import { retirementView } from '../engine/view.js';
 
 const state = {
   session: null,
@@ -31,6 +32,7 @@ const state = {
   pendingEvent: null,
   eventOutcome: null,
   eventConsequences: [],
+  careerEnd: null,
   notice: null,
   autosaveError: null,
 };
@@ -58,6 +60,21 @@ export function getState() {
 
 const AUTOSAVE_SLOT = 'auto';
 
+/**
+ * Conduit le joueur à la fin de sa carrière (étape 9C).
+ *
+ * Le moteur a déjà tout enregistré — la raison, l'année, l'âge, le récit. Il
+ * restait à l'amener sous les yeux du joueur au lieu de l'attendre derrière un
+ * bouton de navigation.
+ */
+function finirCarriere() {
+  state.careerEnd = retirementView(state.session);
+  state.screen = 'legacy';
+  state.pendingEvent = null;
+  state.eventOutcome = null;
+  state.eventConsequences = [];
+}
+
 function autosave() {
   if (!state.session) return;
   const res = saveSession(state.session, AUTOSAVE_SLOT);
@@ -72,6 +89,7 @@ export const actions = {
     state.pendingEvent = null;
     state.eventOutcome = null;
     state.eventConsequences = [];
+    state.careerEnd = null;
     state.notice = null;
     autosave();
     notify();
@@ -91,7 +109,15 @@ export const actions = {
       if (state.session.pendingDecision) break;
       const report = advanceWeek(state.session);
       reports.push(report);
-      if (report.retired) break;
+      if (report.retired) {
+        // La carrière vient de se terminer sans que le joueur l'ait décidé
+        // (étape 9C). L'ancienne version se contentait de sortir de la boucle :
+        // l'écran restait celui d'un joueur en activité, avec sa routine et ses
+        // objectifs, et la page de fin de carrière — pourtant complète — ne
+        // s'ouvrait que si on pensait à la chercher.
+        finirCarriere();
+        break;
+      }
       if (state.session.pendingDecision) {
         state.pendingEvent = state.session.pendingDecision.presented;
         break;
@@ -199,8 +225,14 @@ export const actions = {
 
   retire() {
     retireCareer(state.session, 'décision personnelle');
-    state.screen = 'legacy';
+    finirCarriere();
     autosave();
+    notify();
+  },
+
+  /** Le joueur a lu la fin de sa carrière : on ne la lui repousse plus. */
+  acknowledgeCareerEnd() {
+    state.careerEnd = null;
     notify();
   },
 
@@ -220,6 +252,9 @@ export const actions = {
     state.session = session;
     state.pendingEvent = session.pendingDecision?.presented ?? null;
     state.screen = session.career.retired ? 'legacy' : 'career';
+    // Reprendre une partie n'est pas apprendre la nouvelle : on ne rejoue pas
+    // l'annonce de fin de carrière à chaque chargement.
+    state.careerEnd = null;
     state.lastReports = [];
     notify();
     return true;
@@ -247,6 +282,7 @@ export const actions = {
       state.session = importSave(json);
       state.screen = state.session.career.retired ? 'legacy' : 'career';
       state.pendingEvent = state.session.pendingDecision?.presented ?? null;
+      state.careerEnd = null;
       autosave();
       notify();
       return { ok: true };

@@ -1039,3 +1039,9 @@ details summary {
 .consequence strong { font-variant-numeric: tabular-nums; }
 .consequence.plus { color: #7fd6a1; border-color: rgba(127, 214, 161, 0.35); background: rgba(127, 214, 161, 0.09); }
 .consequence.moins { color: #ff9b8a; border-color: rgba(255, 155, 138, 0.35); background: rgba(255, 155, 138, 0.09); }
+
+/* Fin de carrière annoncée (étape 9C). Le moteur savait, l'écran se taisait. */
+.fin-carriere { border-left: 3px solid #d9c27a; }
+.fin-kicker { letter-spacing: 0.12em; text-transform: uppercase; font-size: 0.72rem; color: #d9c27a; margin: 0 0 4px; }
+.fin-carriere h2 { margin: 0 0 8px; }
+.fin-texte { font-size: 1.02rem; line-height: 1.55; margin: 0 0 10px; }

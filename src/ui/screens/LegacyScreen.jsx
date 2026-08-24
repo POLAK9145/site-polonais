@@ -4,6 +4,27 @@ import { computeLegacy, buildNarrative, buildShareCard, careerStats, postCareerO
 import { timelineView, memoriesView, formatMoney } from '../../engine/view.js';
 import Bar from '../components/Bar.jsx';
 
+/**
+ * L'annonce de la fin (étape 9C). Elle ne dit rien que le moteur n'ait
+ * enregistré : la raison vient de `retireCareer`, la phrase de `FINS_SUBIES`.
+ */
+function FinDeCarriere({ fin }) {
+  return (
+    <section className="card fin-carriere">
+      <p className="fin-kicker">{fin.year} · {fin.age} ans</p>
+      <h2>{fin.title}</h2>
+      {fin.text && <p className="fin-texte">{fin.text}</p>}
+      <p className="muted">
+        {fin.years} ans de compétition, {fin.matches} matchs
+        {fin.titles > 0 ? `, ${fin.titles} titre${fin.titles > 1 ? 's' : ''}` : ', aucun titre'}.
+      </p>
+      <button className="secondary" onClick={actions.acknowledgeCareerEnd}>
+        Voir ce que vous laissez
+      </button>
+    </section>
+  );
+}
+
 /** Page LEGACY (§48). Construite uniquement à partir de faits survenus. */
 /**
  * Combien de « moments marquants » avant que le mot ne veuille plus rien dire.
@@ -13,7 +34,8 @@ import Bar from '../components/Bar.jsx';
 const MOMENTS_EN_TETE = 6;
 
 export default function LegacyScreen() {
-  const { session } = useStore();
+  const state = useStore();
+  const { session } = state;
   const [copied, setCopied] = useState(false);
   const legacy = computeLegacy(session.world, session.career);
   const narrative = buildNarrative(session.world, session.career, legacy);
@@ -40,6 +62,12 @@ export default function LegacyScreen() {
 
   return (
     <div className="screen legacy">
+      {/* La fin de carrière annoncée pour ce qu'elle est (étape 9C). Avant, une
+          carrière qui s'arrêtait seule ne produisait qu'une ligne perdue dans le
+          rapport de la semaine, et le joueur restait devant sa routine
+          d'entraînement sans savoir que c'était fini. */}
+      {state.careerEnd && <FinDeCarriere fin={state.careerEnd} />}
+
       <h1>{person.nick}</h1>
       <p className="archetype">{legacy.archetype.label}</p>
       <p className="lede">{legacy.archetype.desc}</p>

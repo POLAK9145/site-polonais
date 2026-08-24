@@ -194,6 +194,35 @@ function WeekTab({ state, head, goals, team, session }) {
   const foundGate = canFoundTeam(session);
   const hasRealTeam = team && !team.isSelf;
 
+  // Une carrière terminée ne se poursuit pas (étape 9C). L'écran continuait
+  // d'afficher « Semaine suivante », une routine hebdomadaire et des objectifs
+  // à un joueur retraité — vérifié en jouant, et impossible à défendre : le
+  // moteur refusait déjà d'avancer, l'interface faisait semblant du contraire.
+  if (session.career.retired) {
+    return (
+      <>
+        <section className="card">
+          <h2>Carrière terminée</h2>
+          <p className="muted">
+            Vous ne jouez plus. Ce qui a été fait est fait, et c’est sur la page
+            de fin de carrière que ça se lit.
+          </p>
+          <button className="primary" onClick={() => actions.setScreen('legacy')}>
+            Ouvrir la fin de carrière
+          </button>
+        </section>
+        <WeekReport reports={state.lastReports} />
+        <section className="card">
+          <h2>Le monde continue</h2>
+          <p className="muted">
+            Les compétitions se jouent toujours, sans vous. L’onglet Monde les
+            suit.
+          </p>
+        </section>
+      </>
+    );
+  }
+
   return (
     <>
       <section className="card">
