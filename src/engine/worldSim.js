@@ -108,6 +108,7 @@ export function simulateGames(world, rng) {
         body: `La méta bascule vers « ${patch.axis} ». Les équipes ont quelques semaines pour s'adapter.`,
         gameId: game.id,
         tone: 'neutral',
+        portee: 'scene',
       });
     }
     // Réévaluation trimestrielle de la santé structurelle de la scène.
@@ -265,6 +266,29 @@ export function retirePerson(world, p, rng) {
   const fa = world.freeAgents.indexOf(p.id);
   if (fa >= 0) world.freeAgents.splice(fa, 1);
   if (becomesCoach) p.role = 'coach';
+
+  // Une carrière qui comptait ne s'arrête pas dans le silence (étape 8F).
+  // Mesuré avant : une seule retraite apparaissait dans le fil sur les ~400
+  // que produit une carrière de dix ans. Les légendes disparaissaient sans que
+  // personne ne le remarque — ce qui est précisément l'inverse d'un monde
+  // vivant. Le filtre est celui d'une vraie notoriété, sinon on annonce chaque
+  // semaine l'arrêt de gens dont on n'a jamais entendu parler.
+  const notable = (p.stats?.titles ?? 0) > 0 || (p.stats?.peakRating ?? 0) > 82;
+  if (notable) {
+    const titres = p.stats?.titles ?? 0;
+    world.news.push({
+      week: world.week,
+      headline: `${p.nick} met un terme à sa carrière`,
+      body: becomesCoach
+        ? `${titres > 0 ? `${titres} titre${titres > 1 ? 's' : ''} au compteur. ` : ''}Il reste dans le milieu, côté staff.`
+        : `${titres > 0 ? `${titres} titre${titres > 1 ? 's' : ''} au compteur. ` : ''}Il quitte la compétition.`,
+      gameId: p.gameId,
+      tone: 'neutral',
+      important: true,
+      // Un joueur de rang mondial, on l'apprend même sans suivre sa scène.
+      portee: titres >= 3 || (p.stats?.peakRating ?? 0) > 88 ? 'monde' : 'scene',
+    });
+  }
   return p;
 }
 

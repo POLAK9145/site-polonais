@@ -151,6 +151,10 @@ d'inscription »).
 - **9 jeux mécaniquement différents** : les poids par famille changent
   réellement qui est bon à quoi. Un IGL de VANGUARD et un spécialiste
   d'IRONFIST ne sont pas comparables.
+- **Un fil d'actualité qui est celui de votre monde** : les champions couronnés,
+  les carrières qui s'arrêtent, les organisations qui montent et qui meurent.
+  Ce qui se passe sur une scène que vous ne jouez pas ne vous parvient que si
+  c'est un championnat du monde.
 - **Métas vivantes** : patches majeurs, bascules d'axe, choc d'adaptation
   proportionnel à la rigidité du joueur, popularité qui monte et descend, et
   scènes qui peuvent mourir.

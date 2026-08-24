@@ -409,6 +409,40 @@ function recordTitles(world, comp) {
     else org.minorTitles = (org.minorTitles ?? 0) + 1;
     org.reputation = clamp(org.reputation + comp.tierLevel * 1.6, 0, 100);
     org.history.push({ week: world.week, text: `${comp.name} remporté`, compId: comp.id });
+
+    // Un champion, ça se sait (étape 8F).
+    //
+    // Le monde couronnait ses vainqueurs sans que personne l'apprenne : mesuré
+    // sur une carrière de dix ans, le fil d'actualité contenait 51 % de
+    // promotions, 38 % de notes de patch et ZÉRO titre. La scène vivait, la
+    // fenêtre qu'on avait dessus montrait du papier peint.
+    //
+    // Seuls les titres majeurs sont annoncés : il se joue des centaines
+    // d'opens, et les annoncer tous reviendrait à recréer le bruit qu'on
+    // cherche à retirer.
+    if (major) {
+      const vedette = team.roster
+        .map((id) => world.persons[id])
+        .filter(Boolean)
+        .sort((a, b) => (b.reputation?.public ?? 0) - (a.reputation?.public ?? 0))[0];
+      world.news.push({
+        week: world.week,
+        headline: `${org.name} remporte ${comp.name}`,
+        body: vedette
+          ? `${vedette.nick} et les siens s'imposent. La scène retiendra ce nom cette saison.`
+          : `Le titre revient à ${org.name}.`,
+        gameId: team.gameId,
+        tone: 'positive',
+        important: true,
+        // Jusqu'où la nouvelle porte. Un split régional, et même un tournoi
+        // international, sont l'actualité de LEUR scène ; seul un championnat
+        // du monde se sait partout. Sans cette distinction, le fil d'un joueur
+        // se remplissait de titres gagnés sur des jeux auxquels il ne touche
+        // pas — mesuré, 12 dépêches sur 14, puis sept « Invitational » de sept
+        // scènes différentes la même semaine.
+        portee: comp.tierLevel >= 6 ? 'monde' : 'scene',
+      });
+    }
   }
   for (const pid of team.roster) {
     const p = world.persons[pid];

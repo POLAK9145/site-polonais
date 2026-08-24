@@ -549,16 +549,67 @@ export function worldView(session, { gameId = null } = {}) {
     teams,
     players,
     ranking,
-    news: [...world.news].reverse().slice(0, 14).map((n) => ({
-      date: formatDate(n.week),
-      headline: n.headline,
-      body: n.body,
-      tone: n.tone ?? 'neutral',
-    })),
+    news: filActualite(world, career, person),
   };
 }
 
 /** Page Statistiques (§67). */
+/**
+ * Le fil d'actualité tel qu'il arrive au joueur (étape 8F).
+ *
+ * Mesuré sur une carrière de dix ans, le fil brut contenait 51 % de promotions,
+ * 38 % de notes de patch, une seule retraite sur les quelque quatre cents que
+ * le monde produit, et AUCUN titre. Les quatorze dépêches affichées étaient
+ * régulièrement sept notes de patch d'affilée, pour des scènes auxquelles le
+ * joueur ne joue même pas.
+ *
+ * Deux corrections, sans rien masquer d'important :
+ *
+ *   1. Un patch ne concerne que ceux qui jouent la scène. Ceux des autres jeux
+ *      sont écartés — ce n'est pas votre actualité, c'est du décor.
+ *   2. Les dépêches marquées `important` — titres majeurs, retraites qui
+ *      comptent, organisations et scènes qui meurent — ne peuvent pas être
+ *      chassées de l'écran par une rafale de promotions. On garde d'abord les
+ *      plus récentes d'entre elles, puis on complète avec le reste.
+ */
+function filActualite(world, career, person, limite = 14) {
+  const scenesConnues = new Set([person.gameId, ...(career.counters?.gamesPlayed ?? [])]);
+  const pertinent = [...world.news].filter((n) => {
+    // Ce qui se passe sur les scènes du joueur le concerne toujours. Ailleurs,
+    // seules les nouvelles d'envergure mondiale lui parviennent : un titre
+    // international, la disparition d'une scène, un joueur de rang mondial qui
+    // raccroche. Un split régional ou un patch sur un jeu auquel il ne touche
+    // pas, non — c'est du décor, et le décor chassait l'essentiel de l'écran.
+    if (!n.gameId || scenesConnues.has(n.gameId)) return true;
+    return n.portee === 'monde';
+  });
+
+  const parRecence = (a, b) => b.week - a.week;
+  const importantes = pertinent.filter((n) => n.important).sort(parRecence);
+  const autres = pertinent.filter((n) => !n.important).sort(parRecence);
+
+  // Au moins la moitié de la place réservée à ce qui compte, sans lui donner
+  // toute la place : une saison où rien de notable n'arrive doit rester lisible.
+  //
+  // La sélection se fait AVANT le tri d'affichage. Une première version
+  // réservait les places puis retriait l'ensemble par date, ce qui annulait la
+  // réservation : quarante promotions arrivées la même semaine — ce qui se
+  // produit à chaque fin de saison — repoussaient les sept dépêches
+  // importantes hors de l'écran. Le test l'a prise en flagrant délit, 7 → 0.
+  const placesImportantes = Math.ceil(limite / 2);
+  const tete = importantes.slice(0, placesImportantes);
+  const reste = autres.slice(0, limite - tete.length);
+  const retenues = [...tete, ...reste].sort(parRecence);
+
+  return retenues.map((n) => ({
+    date: formatDate(n.week),
+    headline: n.headline,
+    body: n.body,
+    tone: n.tone ?? 'neutral',
+    important: !!n.important,
+  }));
+}
+
 export function statsView(session) {
   const { world, career } = session;
   const person = world.persons[career.personId];
