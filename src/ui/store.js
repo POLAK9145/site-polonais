@@ -30,6 +30,7 @@ const state = {
   lastReports: [],
   pendingEvent: null,
   eventOutcome: null,
+  eventConsequences: [],
   notice: null,
   autosaveError: null,
 };
@@ -70,6 +71,7 @@ export const actions = {
     state.lastReports = [];
     state.pendingEvent = null;
     state.eventOutcome = null;
+    state.eventConsequences = [];
     state.notice = null;
     autosave();
     notify();
@@ -82,6 +84,8 @@ export const actions = {
    */
   advance(weeks = 1) {
     if (!state.session || state.session.career.retired) return;
+    // La réponse de la semaine précédente ne doit pas déborder sur celle-ci.
+    state.eventConsequences = [];
     const reports = [];
     for (let i = 0; i < weeks; i++) {
       if (state.session.pendingDecision) break;
@@ -94,6 +98,7 @@ export const actions = {
       }
       if (report.decision?.resolved) {
         state.pendingEvent = { ...report.decision, resolvedOnly: true };
+        state.eventConsequences = report.decision.consequences ?? [];
         break;
       }
       if (report.matches.length > 0 && weeks > 1) break;
@@ -104,11 +109,20 @@ export const actions = {
     notify();
   },
 
+  /**
+   * Applique le choix du joueur — et LUI RÉPOND (étape 9B).
+   *
+   * La version précédente refermait la fenêtre au moment du clic : le joueur
+   * tranchait un dilemme et le jeu ne disait rien. Ni la phrase de résultat,
+   * pourtant écrite pour chaque choix, ni ce que sa décision avait changé. Une
+   * décision qui n'obtient pas de réponse n'a aucun poids.
+   */
   chooseEvent(choiceId) {
     if (!state.session) return;
     const result = resolveDecision(state.session, choiceId);
     state.eventOutcome = result?.outcome ?? null;
-    state.pendingEvent = null;
+    state.eventConsequences = result?.consequences ?? [];
+    state.pendingEvent = { ...state.pendingEvent, resolved: true };
     autosave();
     notify();
   },
@@ -116,6 +130,7 @@ export const actions = {
   dismissEvent() {
     state.pendingEvent = null;
     state.eventOutcome = null;
+    state.eventConsequences = [];
     notify();
   },
 

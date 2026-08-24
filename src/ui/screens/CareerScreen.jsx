@@ -60,7 +60,13 @@ export default function CareerScreen() {
       {tab === 'relations' && <RelationsTab session={session} />}
       {tab === 'carrière' && <TimelineTab session={session} />}
 
-      {state.pendingEvent && <EventModal event={state.pendingEvent} outcome={state.eventOutcome} />}
+      {state.pendingEvent && (
+        <EventModal
+          event={state.pendingEvent}
+          outcome={state.eventOutcome}
+          consequences={state.eventConsequences}
+        />
+      )}
     </div>
   );
 }

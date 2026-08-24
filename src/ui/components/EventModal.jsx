@@ -6,7 +6,7 @@ import { actions } from '../store.js';
  * Les événements sans choix affichent leur résolution ; les autres bloquent
  * jusqu'à ce que le joueur tranche.
  */
-export default function EventModal({ event, outcome }) {
+export default function EventModal({ event, outcome, consequences = [] }) {
   const resolved = event.resolvedOnly || event.resolved;
   return (
     <div className="modal-backdrop">
@@ -24,6 +24,18 @@ export default function EventModal({ event, outcome }) {
         {resolved ? (
           <>
             {(event.outcome || outcome) && <p className="outcome">{event.outcome || outcome}</p>}
+            {/* Ce que la décision a réellement changé (étape 9B). Le moteur le
+                calculait au centième près sans jamais le montrer : le joueur
+                choisissait à l'aveugle et ne pouvait rien en apprendre. */}
+            {consequences.length > 0 && (
+              <div className="consequences">
+                {consequences.map((c) => (
+                  <span key={c.cle} className={`consequence ${c.delta > 0 ? 'plus' : 'moins'}`}>
+                    {c.label} <strong>{c.delta > 0 ? `+${c.delta}` : c.delta}</strong>
+                  </span>
+                ))}
+              </div>
+            )}
             <button className="primary" onClick={actions.dismissEvent}>Continuer</button>
           </>
         ) : (

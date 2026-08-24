@@ -1026,3 +1026,16 @@ details summary {
 .bilan-ligne.mauvais { color: #ff9b8a; }
 .bilan-ligne.alerte { color: #e0c56b; }
 .bilan-ligne.argent { color: #d9c27a; }
+
+/* Conséquences chiffrées d'un choix (étape 9B). Le moteur les calculait sans
+   jamais les montrer : on choisissait à l'aveugle. */
+.consequences { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+.consequence {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  border: 1px solid transparent;
+}
+.consequence strong { font-variant-numeric: tabular-nums; }
+.consequence.plus { color: #7fd6a1; border-color: rgba(127, 214, 161, 0.35); background: rgba(127, 214, 161, 0.09); }
+.consequence.moins { color: #ff9b8a; border-color: rgba(255, 155, 138, 0.35); background: rgba(255, 155, 138, 0.09); }

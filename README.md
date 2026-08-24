@@ -201,6 +201,11 @@ d'inscription »).
   La projection est l'inversion exacte de la loi d'accumulation du moteur, et
   les cinq entrées du calcul sont des faits enregistrés par la simulation, pas
   un contexte reconstitué après coup.
+- **Le jeu répond aux décisions** : quand un choix est tranché, la fenêtre
+  reste ouverte et dit ce qu'il a produit — la phrase de résolution, puis les
+  chiffres. Le registre note ce qui a été APPLIQUÉ, après mise à l'échelle par
+  la difficulté et après plafonnement : un attribut bloqué à 99 n'annonce aucun
+  gain, et une famille entière modifiée donne une ligne au lieu de six.
 - **Sauvegarde locale** compacte, versionnée, avec reprise automatique.
 
 ## Ce qui n'existe pas encore
@@ -276,7 +281,10 @@ Couverture notable :
 - le monde évolue sans le joueur (transferts, retraites, nouvelles générations) ;
 - anti-répétition : aucun événement rejoué à l'intérieur de son cooldown ;
 - sauvegarde/rechargement à l'identique, et impossibilité de re-tirer un résultat ;
-- le récit final ne mentionne jamais un titre qui n'a pas été gagné.
+- le récit final ne mentionne jamais un titre qui n'a pas été gagné ;
+- les conséquences affichées après un choix sont celles qui ont été
+  appliquées, pas celles qui étaient écrites dans l'événement — bornes et
+  difficulté comprises — et la fenêtre reste ouverte pour les montrer.
 
 ---
 

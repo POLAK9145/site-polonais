@@ -57,6 +57,7 @@ import {
   pickEvent,
   presentEvent,
   resolveEvent,
+  lastConsequences,
   runScheduledEffects,
   restorePicks,
   getEvent,
@@ -909,7 +910,10 @@ function maybeFireEvent(session, report) {
     restorePicks(ctx, presented.picks);
     ctx.chainData = presented.chainData;
     const outcome = resolveEvent(def, null, ctx);
-    report.decision = { ...presented, resolved: true, outcome };
+    report.decision = {
+      ...presented, resolved: true, outcome,
+      consequences: lastConsequences(ctx),
+    };
     career.counters.decisions++;
     return;
   }
@@ -933,6 +937,7 @@ export function resolveDecision(session, choiceId) {
   restorePicks(ctx, pending.presented.picks);
   ctx.chainData = pending.presented.chainData;
   const outcome = resolveEvent(def, choiceId, ctx);
+  const consequences = lastConsequences(ctx);
   session.career.counters.decisions++;
   session.career.decisionsLog = session.career.decisionsLog ?? [];
   session.career.decisionsLog.push({
@@ -943,7 +948,7 @@ export function resolveDecision(session, choiceId) {
   session.pendingDecision = null;
   session.career.pendingDecision = null;
   session.world.rngState = session.rng.state;
-  return { outcome, offers: session.career.offers };
+  return { outcome, consequences, offers: session.career.offers };
 }
 
 /** Accepte une offre de contrat présentée au joueur. */

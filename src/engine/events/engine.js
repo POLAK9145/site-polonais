@@ -348,6 +348,11 @@ export function resolveEvent(def, choiceId, ctx) {
   const { state, world } = ctx;
   const week = world.week;
 
+  // Le registre des conséquences ne porte que sur CE choix (étape 9B) : sans
+  // remise à zéro, il accumulerait les effets de tous les événements de la
+  // semaine et attribuerait au dernier choix ce que les précédents ont fait.
+  ctx.fx.resetJournal?.();
+
   let outcome = null;
   if (def.choices?.length) {
     const choice = def.choices.find((c) => c.id === choiceId) ?? def.choices[0];
@@ -365,6 +370,11 @@ export function resolveEvent(def, choiceId, ctx) {
   state.recentTags = state.recentTags.filter((t) => week - t.week <= TAG_MEMORY_WEEKS * 2);
 
   return typeof outcome === 'string' ? outcome : outcome ?? null;
+}
+
+/** Les conséquences chiffrées du dernier choix appliqué (étape 9B). */
+export function lastConsequences(ctx) {
+  return (ctx.fx?.journal ?? []).map((e) => ({ ...e }));
 }
 
 /** Programme la suite d'une chaîne narrative (§30). */
