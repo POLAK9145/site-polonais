@@ -232,6 +232,38 @@ Listé explicitement pour ne rien prétendre (§83) :
 - **Comparaison de deux carrières** (§52).
 - **Records mondiaux persistants** (§68).
 - **Objectifs cachés** (§35) : seuls les objectifs visibles sont calculés.
+- **Le joueur naît moins doué que les adolescents de son monde.** Le joueur et
+  le monde calculent la même grandeur — la marge de progression restante à un
+  âge donné — avec deux formules différentes, et celle du joueur est la plus
+  sévère : `clamp(23 - âge, 0, 8)` donne 5 à 18 ans là où le monde donne 11,8,
+  et tombe à 0 dès 23 ans. Le plafond d'un personnage valant son niveau actuel
+  plus cette marge, le joueur est doublement pénalisé. Mesuré à la création sur
+  30 mondes, avant que rien n'ait été joué : potentiel médian 76,8 pour le
+  joueur contre 88,4 pour les PNJ de moins de 20 ans, et **aucun joueur sur
+  trente** ne pouvait naître dans le dernier décile de sa propre génération.
+  Aucune note de conception ne demande cet écart.
+
+  La correction a été écrite et mesurée, puis **retirée**. Elle relève le
+  potentiel médian de 71 à 78 mais ne change pas le résultat qui l'avait
+  motivée — toujours zéro top 10 — et casse trois tests dont deux demandent de
+  recalibrer des systèmes validés (les titres de presse de l'étape 9A, la
+  divergence des carrières à talent égal). Livrer un changement d'équilibre sans
+  bénéfice mesuré, au prix d'une cascade de recalibrages, n'en vaut pas le coût.
+  Elle repartira avec la correction de l'écart de réalisation, calibrée d'un
+  seul tenant.
+
+- **Le sommet mondial n'est pas atteignable.** Mesuré sur une quarantaine de
+  carrières de trente ans menées avec la meilleure politique d'entraînement,
+  dans quatre configurations du moteur : le joueur se classe autour du 60ᵉ-70ᵉ
+  centile de ses contemporains, son meilleur classement jamais observé est 11ᵉ,
+  et il n'entre **jamais** dans le top 10. La cause n'est pas le
+  potentiel de départ — le corriger n'a pas changé le résultat — mais l'écart
+  de réalisation : le joueur atteint 87 % de son plafond là où un PNJ en
+  atteint 94 %, et `progressPerson` isolé en donne 92,5 %. La perte se joue
+  donc dans le tour de semaine du joueur. Sont écartés par la mesure : le
+  traitement des PNJ par lots (+0,04 point), les événements (les couper aggrave
+  l'écart) et le temps passé sans équipe (1 % pour le joueur, 0 à 11 % pour les
+  PNJ). Le reste n'est pas élucidé.
 
 Ces manques correspondent aux phases 5 et 6 du plan de développement. La
 priorité a été donnée à la profondeur des systèmes existants plutôt qu'au
