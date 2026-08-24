@@ -219,6 +219,23 @@ nombre de fonctionnalités (§77, §87).
 
 ---
 
+## Outils
+
+```bash
+node tools/career.js --seed=demo --policy=grinder --years=25 --narrative
+node tools/fingerprint.js --out=/tmp/avant.json      # avant un changement
+node tools/fingerprint.js compare --before=/tmp/avant.json --after=/tmp/apres.json
+```
+
+`career.js` joue une carrière complète et peut en produire une sauvegarde : on
+inspecte les écrans de fin de partie sans jouer vingt ans à la main.
+
+`fingerprint.js` répond à une question qui revient à chaque correction : ce
+changement modifie-t-il le jeu, ou seulement ce qu'il enregistre ? Beaucoup
+n'ajoutent qu'une trace et ne doivent alors RIEN déplacer. Le vérifier prend
+trois minutes, contre une heure quarante pour une baseline — et la réponse est
+plus nette, puisqu'on compare les carrières une à une au lieu de distributions.
+
 ## Tests
 
 ```bash
