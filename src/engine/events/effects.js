@@ -11,7 +11,7 @@ import { attrsOfGroup, attrMeta, groupMeta } from '../attributes.js';
 import { adjustRelation } from '../relations.js';
 import { logTimeline, addMemory, addAchievement, setFlag } from '../career.js';
 import { scheduleEffect, queueChain } from './engine.js';
-import { gainFollowers } from '../reputation.js';
+import { gainFollowers, justifiedReputation } from '../reputation.js';
 
 /**
  * Ce qu'un choix a réellement coûté ou rapporté (étape 9B).
@@ -32,6 +32,19 @@ import { gainFollowers } from '../reputation.js';
  * seule ligne — `group('mechanical', 2)` touche six attributs, et six pastilles
  * pour un seul effet seraient du bruit, pas de l'information.
  */
+/**
+ * De combien un moment médiatique peut porter au-dessus de son rang.
+ *
+ * Calibré par mesure sur 40 carrières, pas choisi : à 0, le plafond est dur et
+ * la carrière en souffre réellement (titres par carrière 0,65 → 0,38, matchs
+ * 280 → 245). À 10, l'écart d'audience avec les PNJ comparables tombe de ×25 à
+ * ×4 sans aucun coût mesurable — titres identiques, pic de niveau identique.
+ */
+const MARGE_NOTORIETE = 10;
+
+/** Les canaux qui alimentent le plafond d'audience, et eux seuls. */
+const CANAUX_NOTORIETE = new Set(['public', 'community']);
+
 const ETIQUETTES_REP = {
   pros: 'Réputation (milieu)',
   public: 'Notoriété',
@@ -119,7 +132,44 @@ export function createEffects(ctx) {
     rep(kind, delta) {
       if (person.reputation[kind] === undefined) return fx;
       const avant = person.reputation[kind];
-      person.reputation[kind] = clamp(person.reputation[kind] + delta, 0, 100);
+      let apres = clamp(avant + delta, 0, 100);
+      // La notoriété se gagne, elle ne se raconte pas (étape 9D).
+      //
+      // Mesuré sur 40 carrières : le joueur finissait avec 25 fois l'audience
+      // des PNJ de son propre monde ayant la même carrière — même pic de
+      // niveau, même volume de matchs, même palmarès — et l'écart était le plus
+      // grand chez les joueurs SANS aucun titre. 63 % de son audience venait
+      // des événements ; chez les PNJ, 97 % venait de la compétition. La
+      // célébrité du joueur n'avait aucun rapport avec sa carrière.
+      //
+      // La cause n'était pas l'audience donnée par les événements — la couper
+      // rendait le problème dix fois pire, parce que `gainFollowers` consomme
+      // la marge sous plafond avec un rendement décroissant et que les autres
+      // chemins la remplissaient ensuite à plein rendement. C'était la
+      // RÉPUTATION : chaque moment médiatique poussait `public` sans borne,
+      // le plafond d'audience en dépend, et le seul rappel — `settleReputation`
+      // — est annuel.
+      //
+      // On applique donc aux événements la règle que le modèle énonce déjà
+      // pour tout le monde : au-delà de ce que le niveau justifie, seuls les
+      // titres font monter. La marge laisse vivre le moment viral — un pic
+      // au-dessus de son rang, que l'oubli annuel efface ensuite — sans
+      // permettre à une carrière sans palmarès de devenir mondialement connue.
+      //
+      // Le plafond ne porte QUE sur les canaux de notoriété. Le regard du
+      // milieu (`pros`) n'entre pas dans le plafond d'audience et n'a pas été
+      // mesuré ici : l'y inclure serait étendre la correction au-delà de ce
+      // qu'on a vérifié.
+      if (delta > 0 && CANAUX_NOTORIETE.has(kind)) {
+        const justifie = justifiedReputation(world, person, kind);
+        if (justifie !== null) {
+          const plafond = justifie + MARGE_NOTORIETE;
+          // Déjà au-dessus : un événement de plus n'ajoute rien. Sinon on
+          // monte, sans franchir le plafond.
+          apres = avant >= plafond ? avant : Math.min(apres, plafond);
+        }
+      }
+      person.reputation[kind] = apres;
       noter(`rep:${kind}`, ETIQUETTES_REP[kind] ?? kind, person.reputation[kind] - avant);
       return fx;
     },

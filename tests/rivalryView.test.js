@@ -30,14 +30,26 @@ import { initEvents } from '../src/engine/events/index.js';
 
 initEvents({ force: true });
 
-/** Des carrières choisies sur PROPRIÉTÉ : celles qui ont connu une rivalité. */
+/**
+ * Des carrières choisies sur PROPRIÉTÉ : celles qui ont connu une rivalité.
+ *
+ * Le vivier prenait les QUATRE premières dans l'ordre des graines, et s'y
+ * arrêtait. C'était trop peu pour ce que le test 3 prétend démontrer, et le
+ * choix n'était même pas aléatoire : les quatre venaient toujours des deux
+ * mêmes graines. Mesuré, ces deux graines-là produisent des carrières où le
+ * joueur ne croise jamais son rival — le test passait grâce à une cinquième
+ * carrière qui entrait de justesse dans la fenêtre.
+ *
+ * Toute modification du moteur qui déplace le tirage aléatoire changeait donc
+ * le verdict sans que rien n'ait changé dans le comportement mesuré. On prend
+ * tout le vivier.
+ */
 let cache = null;
 function carrieresAvecRivalite() {
   if (cache) return cache;
   const out = [];
-  for (let i = 0; i < 6 && out.length < 4; i++) {
+  for (let i = 0; i < 6; i++) {
     for (const policyId of ['grinder', 'random', 'entertainer']) {
-      if (out.length >= 4) break;
       const r = runOneCareer({ seed: `8e-${i}`, years: 25, policyId, keepSession: true });
       if (r.crash) continue;
       const c = r.session.career;
@@ -51,9 +63,10 @@ function carrieresAvecRivalite() {
 }
 
 test('0 — le moteur produit bien des carrières avec rivalité', () => {
-  assert.equal(
-    carrieresAvecRivalite().length, 4,
-    'pas assez de carrières avec rivalité : les tests suivants ne prouveraient rien',
+  assert.ok(
+    carrieresAvecRivalite().length >= 10,
+    `seulement ${carrieresAvecRivalite().length} carrières avec rivalité :` +
+      ' les tests suivants ne prouveraient pas grand-chose',
   );
 });
 
@@ -106,10 +119,16 @@ test('2 — chaque confrontation annoncée a réellement eu lieu', () => {
 });
 
 test('3 — le compteur de confrontations n’est plus mort', () => {
-  // La propriété qui a motivé l'étape : sur un échantillon de carrières avec
-  // rivalité, au moins une doit avoir réellement affronté son rival. Si ce
-  // test tombe, c'est que le compteur est retombé à zéro partout — donc mort à
-  // nouveau, et l'écran mentirait.
+  // La propriété qui a motivé l'étape : le compteur doit vivre, et pas dans un
+  // cas isolé. Une carrière sans confrontation n'est pas une anomalie — on peut
+  // très bien ne jamais croiser son rival — mais si c'était le cas général, le
+  // compteur serait mort et l'écran mentirait.
+  //
+  // « Au moins une carrière sur quatre » ne distinguait pas ces deux
+  // situations : c'était vrai aussi bien pour un compteur en bonne santé que
+  // pour un compteur qui ne s'incrémente qu'une fois sur vingt. On exige donc
+  // une PART, mesurée à 13 carrières sur 16 avant l'étape 9D et 13 sur 17
+  // après.
   const totaux = [];
   for (const { session } of carrieresAvecRivalite()) {
     const v = rivalryView(session);
@@ -118,9 +137,11 @@ test('3 — le compteur de confrontations n’est plus mort', () => {
       (v.enCours?.confrontations ?? 0) + v.passees.reduce((a, r) => a + r.confrontations, 0),
     );
   }
+  const vivantes = totaux.filter((t) => t > 0).length;
   assert.ok(
-    totaux.some((t) => t > 0),
-    `aucune confrontation comptée sur ${totaux.length} carrières : le compteur est mort`,
+    vivantes > totaux.length / 2,
+    `seulement ${vivantes}/${totaux.length} carrières comptent une confrontation :` +
+      ' le compteur ne vit plus que par accident',
   );
 });
 

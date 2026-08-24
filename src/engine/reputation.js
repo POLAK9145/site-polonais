@@ -123,6 +123,24 @@ export function standingSupport(world, person) {
 const SUPPORT_WEIGHT = { pros: 1, public: 0.62, community: 0.5 };
 
 /**
+ * Le niveau de réputation que la carrière justifie **en ce moment** : le
+ * palmarès acquis, ou le niveau auquel on joue, le plus élevé des deux.
+ *
+ * C'est la valeur vers laquelle `settleReputation` fait glisser tout le monde.
+ * Elle est exportée parce qu'elle doit rester une seule formule : les
+ * événements du joueur s'y réfèrent aussi (étape 9D), et une constante
+ * recopiée finirait par diverger de celle-ci.
+ *
+ * Renvoie `null` pour un canal qui ne dépend pas du soutien courant — la
+ * réputation médiatique et la toxicité ont leurs propres règles.
+ */
+export function justifiedReputation(world, person, kind) {
+  const weight = SUPPORT_WEIGHT[kind];
+  if (weight === undefined) return null;
+  return Math.max(reputationFloor(person)[kind] ?? 0, standingSupport(world, person) * weight);
+}
+
+/**
  * Fait glisser la réputation vers ce que la situation justifie — dans les deux
  * sens, et à deux vitesses différentes.
  *
@@ -133,12 +151,10 @@ const SUPPORT_WEIGHT = { pros: 1, public: 0.62, community: 0.5 };
  * qu'en gagnant.
  */
 export function settleReputation(world, person) {
-  const floor = reputationFloor(person);
-  const support = standingSupport(world, person);
   let moved = 0;
   for (const kind of ['pros', 'public', 'community']) {
     const current = person.reputation[kind] ?? 0;
-    const target = Math.max(floor[kind], support * SUPPORT_WEIGHT[kind]);
+    const target = justifiedReputation(world, person, kind);
     if (Math.abs(current - target) < 0.05) continue;
     const rate = current > target ? FORGET_RATE : RECOGNITION_RATE;
     const next = current + (target - current) * rate;

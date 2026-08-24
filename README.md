@@ -211,6 +211,12 @@ d'inscription »).
   chiffres. Le registre note ce qui a été APPLIQUÉ, après mise à l'échelle par
   la difficulté et après plafonnement : un attribut bloqué à 99 n'annonce aucun
   gain, et une famille entière modifiée donne une ligne au lieu de six.
+- **La notoriété se gagne** : au-delà de ce que le niveau justifie, seuls les
+  titres font monter — pour le joueur comme pour les PNJ. Un moment médiatique
+  porte au-dessus de son rang, l'oubli annuel le ramène. Mesuré avant
+  correction : le joueur finissait avec 25 fois l'audience des PNJ de son
+  propre monde ayant la même carrière, et l'écart était le plus grand chez ceux
+  qui n'avaient jamais rien gagné.
 - **Sauvegarde locale** compacte, versionnée, avec reprise automatique.
 
 ## Ce qui n'existe pas encore
@@ -291,7 +297,11 @@ Couverture notable :
   appliquées, pas celles qui étaient écrites dans l'événement — bornes et
   difficulté comprises — et la fenêtre reste ouverte pour les montrer ;
 - une carrière qui s'arrête d'elle-même conduit le joueur à sa page de fin,
-  et chaque raison d'arrêt possible a bien une phrase pour la dire.
+  et chaque raison d'arrêt possible a bien une phrase pour la dire ;
+- l'audience du joueur reste du même ordre que celle des PNJ de son monde
+  ayant une carrière équivalente — c'est la seule façon de vérifier qu'il
+  n'est pas privilégié, et une comparaison à la moyenne générale ne le dit
+  pas.
 
 ---
 
