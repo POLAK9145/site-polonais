@@ -194,7 +194,16 @@ export function closeSeasonRecord(career, world, person, { rating = null } = {})
   const matches = diff('matches');
   const wins = diff('wins');
   const bilan = {
-    year: debut.year,
+    // L'année où la saison SE TERMINE, pas celle où elle a commencé.
+    //
+    // Une saison se referme semaine 51 : à part la première, chacune démarre
+    // donc semaine 51 de l'année civile précédente et se déroule pour
+    // l'essentiel dans la suivante. Les nommer par leur année de départ les
+    // décalait toutes d'un an, et faisait de surcroît porter le même millésime
+    // à la première saison et à la deuxième — mesuré sur 8 carrières sur 8. Le
+    // défaut ne s'est vu qu'en traçant la courbe de carrière, qui met les
+    // années côte à côte (étape 9G).
+    year: yearOf(world.week),
     weeks: world.week - debut.week,
     matches,
     wins,

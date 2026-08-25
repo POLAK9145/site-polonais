@@ -224,6 +224,13 @@ d'inscription »).
   progression, et l'écart se lit ensuite partout : 90 % du plafond atteint
   contre 92 %, 25ᵉ de ses contemporains contre 17ᵉ. Le joueur atteint le top 10
   mondial dans environ 12 % des carrières, et a culminé 2ᵉ.
+- **La courbe d'une carrière** : dix-sept ans, ce sont dix-sept bilans qu'il
+  fallait lire l'un après l'autre. La forme — la montée, le palier, le pic, le
+  déclin, et à quelle saison un transfert a tout changé — se lit maintenant d'un
+  coup d'œil, pendant la carrière comme à la retraite. Chaque point est le
+  niveau enregistré à la clôture de sa saison, jamais reconstitué après coup, et
+  l'échelle garde une amplitude minimale pour qu'une carrière plate ne se
+  dessine pas comme une ascension.
 - **Sauvegarde locale** compacte, versionnée, avec reprise automatique.
 
 ## Ce qui n'existe pas encore

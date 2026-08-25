@@ -863,3 +863,72 @@ export function retirementView(session) {
     text: subie,
   };
 }
+
+/**
+ * La carrière en une courbe (étape 9G).
+ *
+ * CE QUE ÇA RÉPOND
+ * ----------------
+ * Une carrière de dix-sept ans, c'est dix-sept bilans de saison qu'il faut
+ * lire l'un après l'autre pour se faire une idée. La forme d'une carrière —
+ * la montée, le palier, le pic, le déclin, et à quel moment un transfert a
+ * tout changé — ne se voit pas dans une liste. Elle se voit d'un coup d'œil
+ * dans une courbe.
+ *
+ * CE QUE ÇA NE FAIT PAS
+ * ---------------------
+ * Aucun calcul. Chaque point est un fait déjà enregistré par
+ * `closeSeasonRecord` au moment où la saison s'est refermée : le niveau de fin
+ * de saison, les titres gagnés, la structure. Reconstituer une courbe après
+ * coup, c'est risquer d'afficher une carrière que la simulation n'a pas vécue —
+ * l'erreur que l'étape 8A avait déjà coûtée sur la charge.
+ *
+ * Les changements de structure sont marqués : `orgStart` et `orgEnd` sont
+ * enregistrés par saison, un écart entre les deux EST un transfert.
+ */
+export function careerChartView(session) {
+  const { career } = session;
+  const saisons = career.seasons ?? [];
+  if (saisons.length < 2) return null;
+
+  const points = saisons
+    .filter((s) => s.ratingEnd != null)
+    .map((s, i) => ({
+      annee: s.year,
+      niveau: Math.round(s.ratingEnd * 10) / 10,
+      // Le niveau de début n'est utile que pour la première saison : ensuite
+      // c'est le niveau de fin de la précédente.
+      niveauDebut: i === 0 && s.ratingStart != null ? Math.round(s.ratingStart * 10) / 10 : null,
+      matchs: s.matches ?? 0,
+      titres: s.titles ?? 0,
+      finales: s.finals ?? 0,
+      org: s.orgEnd ?? s.orgStart ?? null,
+      // Un transfert : la structure de fin n'est pas celle de début.
+      transfert: s.orgStart && s.orgEnd && s.orgStart !== s.orgEnd ? s.orgEnd : null,
+      gains: Math.round(s.earnings ?? 0),
+      titre: s.headline ?? null,
+    }));
+  if (points.length < 2) return null;
+
+  const niveaux = points.map((p) => p.niveau);
+  const min = Math.min(...niveaux, points[0].niveauDebut ?? Infinity);
+  const max = Math.max(...niveaux);
+  // Une échelle collée aux extrêmes transforme un plat en montagne russe. On
+  // garde une amplitude minimale pour que la forme reste honnête.
+  const AMPLITUDE_MIN = 12;
+  const centre = (min + max) / 2;
+  const demi = Math.max((max - min) / 2, AMPLITUDE_MIN / 2);
+
+  const meilleure = points.reduce((a, p) => (p.niveau > a.niveau ? p : a), points[0]);
+  return {
+    points,
+    bas: Math.floor(centre - demi),
+    haut: Math.ceil(centre + demi),
+    pic: { annee: meilleure.annee, niveau: meilleure.niveau },
+    titresTotal: points.reduce((a, p) => a + p.titres, 0),
+    transferts: points.filter((p) => p.transfert).length,
+    // Une carrière tronquée à 30 saisons doit le dire plutôt que de faire
+    // croire qu'elle a commencé là.
+    tronquee: saisons.length >= 30,
+  };
+}

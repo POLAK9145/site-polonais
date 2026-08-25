@@ -1045,3 +1045,19 @@ details summary {
 .fin-kicker { letter-spacing: 0.12em; text-transform: uppercase; font-size: 0.72rem; color: #d9c27a; margin: 0 0 4px; }
 .fin-carriere h2 { margin: 0 0 8px; }
 .fin-texte { font-size: 1.02rem; line-height: 1.55; margin: 0 0 10px; }
+
+/* Courbe de carrière (étape 9G). Une carrière de dix-sept ans ne se lit pas
+   dans une liste de dix-sept bilans. */
+.career-chart { margin: 6px 0 2px; }
+.chart-scroll { overflow-x: auto; }
+.chart-grid { stroke: rgba(255, 255, 255, 0.08); stroke-width: 1; }
+.chart-axis { fill: #7f8b9e; font-size: 11px; }
+.chart-area { fill: rgba(90, 160, 255, 0.13); }
+.chart-line { fill: none; stroke: #5aa0ff; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart-dot { fill: #5aa0ff; }
+.chart-dot.titre { fill: #d9c27a; }
+.chart-transfer { stroke: rgba(217, 194, 122, 0.35); stroke-width: 1; stroke-dasharray: 3 3; }
+.chart-legend { font-size: 0.78rem; color: #7f8b9e; margin: 4px 0 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.chart-key { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.chart-key.titre { background: #d9c27a; }
+.chart-key.transfert { background: transparent; border-left: 2px dashed rgba(217, 194, 122, 0.7); border-radius: 0; width: 2px; height: 11px; margin-left: 8px; }

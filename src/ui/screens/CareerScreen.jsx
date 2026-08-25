@@ -7,6 +7,7 @@ import {
   offersView,
   goalsView,
   timelineView,
+  careerChartView,
   loadView,
   routineOutlook,
   relationsView,
@@ -19,6 +20,7 @@ import { canSeekTeam, canFoundTeam, SEEK_COOLDOWN_WEEKS } from '../../engine/sim
 import Bar from '../components/Bar.jsx';
 import EventModal from '../components/EventModal.jsx';
 import WeekReport from '../components/WeekReport.jsx';
+import CareerChart from '../components/CareerChart.jsx';
 
 /** Écran principal (§64). Volontairement dense mais hiérarchisé. */
 export default function CareerScreen() {
@@ -654,7 +656,21 @@ function RelationsTab({ session }) {
 
 function TimelineTab({ session }) {
   const timeline = timelineView(session);
+  const courbe = careerChartView(session);
   return (
+    <>
+    {/* La courbe pendant qu'on la vit, pas seulement à la retraite : c'est en
+        cours de carrière qu'elle sert à décider (étape 9G). */}
+    {courbe && (
+      <section className="card">
+        <h2>Votre progression</h2>
+        <CareerChart chart={courbe} />
+        <p className="muted">
+          Meilleure saison : {courbe.pic.annee} à {courbe.pic.niveau} de niveau
+          {courbe.titresTotal > 0 && ` · ${courbe.titresTotal} titre${courbe.titresTotal > 1 ? 's' : ''}`}
+        </p>
+      </section>
+    )}
     <section className="card">
       <h2>Votre histoire</h2>
       {timeline.length === 0 && <p className="muted">Rien de notable pour l’instant.</p>}
@@ -671,6 +687,7 @@ function TimelineTab({ session }) {
         </div>
       ))}
     </section>
+    </>
   );
 }
 

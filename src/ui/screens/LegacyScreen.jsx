@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { actions, useStore } from '../store.js';
 import { computeLegacy, buildNarrative, buildShareCard, careerStats, postCareerOptions } from '../../engine/legacy.js';
-import { timelineView, memoriesView, formatMoney } from '../../engine/view.js';
+import { timelineView, memoriesView, formatMoney, careerChartView } from '../../engine/view.js';
+import CareerChart from '../components/CareerChart.jsx';
 import Bar from '../components/Bar.jsx';
 
 /**
@@ -46,6 +47,7 @@ export default function LegacyScreen() {
   const timeline = timelineView(session, { mode: journalComplet ? 'complet' : 'fiche' });
   const memories = memoriesView(session);
   const options = postCareerOptions(session.world, session.career);
+  const courbe = careerChartView(session);
   const person = session.world.persons[session.career.personId];
 
   const cardText = ['━━━━━━━━━━━━━━━━━━━━', ...card, '━━━━━━━━━━━━━━━━━━━━'].join('\n');
@@ -87,6 +89,21 @@ export default function LegacyScreen() {
           une vraie histoire vaut mieux qu’un palmarès sans relief.
         </p>
       </section>
+
+      {/* La forme de la carrière avant son récit : on voit la montée, le
+          palier et le déclin d'un coup d'œil, et à quelle saison un transfert
+          a changé la suite (étape 9G). */}
+      {courbe && (
+        <section className="card">
+          <h2>Votre carrière</h2>
+          <CareerChart chart={courbe} />
+          <p className="muted">
+            Meilleure saison : {courbe.pic.annee} à {courbe.pic.niveau} de niveau
+            {courbe.titresTotal > 0 && ` · ${courbe.titresTotal} titre${courbe.titresTotal > 1 ? 's' : ''}`}
+            {courbe.transferts > 0 && ` · ${courbe.transferts} changement${courbe.transferts > 1 ? 's' : ''} de structure`}
+          </p>
+        </section>
+      )}
 
       <section className="card">
         <h2>Votre histoire</h2>
