@@ -6,13 +6,17 @@ import CareerScreen from './screens/CareerScreen.jsx';
 import WorldScreen from './screens/WorldScreen.jsx';
 import StatsScreen from './screens/StatsScreen.jsx';
 import LegacyScreen from './screens/LegacyScreen.jsx';
+import ArchiveScreen from './screens/ArchiveScreen.jsx';
 
 const IN_GAME = ['career', 'world', 'stats', 'legacy'];
 
 export default function App() {
   const state = useStore();
   const hasSession = !!state.session;
-  const screen = hasSession ? state.screen : state.screen === 'create' ? 'create' : 'home';
+  // Le musée se consulte sans partie en cours : c'est justement entre deux
+  // carrières qu'on veut les comparer (étape 9K).
+  const HORS_PARTIE = ['create', 'archive'];
+  const screen = hasSession ? state.screen : HORS_PARTIE.includes(state.screen) ? state.screen : 'home';
 
   return (
     <div className="app">
@@ -23,6 +27,7 @@ export default function App() {
         {screen === 'world' && hasSession && <WorldScreen />}
         {screen === 'stats' && hasSession && <StatsScreen />}
         {screen === 'legacy' && hasSession && <LegacyScreen />}
+        {screen === 'archive' && <ArchiveScreen />}
       </main>
 
       {hasSession && IN_GAME.includes(screen) && (

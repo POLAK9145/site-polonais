@@ -4,6 +4,7 @@ import { actions, useStore } from '../store.js';
 export default function HomeScreen() {
   useStore();
   const saveInfo = actions.saveInfo();
+  const archivees = actions.archive().length;
 
   return (
     <div className="screen home">
@@ -24,6 +25,13 @@ export default function HomeScreen() {
         {saveInfo && (
           <button className="secondary big" onClick={() => actions.loadAutosave()}>
             Reprendre — {saveInfo.nick}
+          </button>
+        )}
+        {/* Le musée n'apparaît que s'il contient quelque chose : une porte
+            vide n'apprend rien (étape 9K). */}
+        {archivees > 0 && (
+          <button className="secondary big" onClick={() => actions.setScreen('archive')}>
+            Carrières terminées ({archivees})
           </button>
         )}
       </div>

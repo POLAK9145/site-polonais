@@ -245,6 +245,14 @@ d'inscription »).
   niveau enregistré à la clôture de sa saison, jamais reconstitué après coup, et
   l'échelle garde une amplitude minimale pour qu'une carrière plate ne se
   dessine pas comme une ascension.
+- **Le musée des carrières terminées** : chaque carrière menée à son terme
+  s'archive d'elle-même, et deux d'entre elles se comparent côte à côte — score,
+  palmarès, longévité, gains, et les trois dimensions qui les séparent vraiment.
+  La fiche est prise au moment de la retraite, tant que le monde qui l'a
+  produite existe encore : recalculée plus tard, elle donnerait des chiffres que
+  le joueur n'a jamais vus. Une grandeur qui ne se classe pas — le nombre de
+  structures traversées — n'affiche aucun vainqueur : rester quinze ans au même
+  endroit n'est ni mieux ni moins bien que d'en changer six fois.
 - **Sauvegarde locale** compacte, versionnée, avec reprise automatique.
 
 ## Ce qui n'existe pas encore
@@ -257,7 +265,6 @@ Listé explicitement pour ne rien prétendre (§83) :
 - **Défi quotidien et classements** (§37) : le déterminisme par seed rend le
   mode possible, il n'est pas construit.
 - **Scénarios prédéfinis** (§38) et **mode « what if »** (§39).
-- **Comparaison de deux carrières** (§52).
 - **Records mondiaux persistants** (§68).
 - **Objectifs cachés** (§35) : seuls les objectifs visibles sont calculés.
 - **Une échelle de risque graduée sur les choix** (du type « sûr / puissant /

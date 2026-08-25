@@ -23,6 +23,7 @@ import {
 } from '../engine/simulation.js';
 import { saveSession, loadSession, listSaves, deleteSave, exportSave, importSave } from '../engine/save.js';
 import { retirementView } from '../engine/view.js';
+import { archiveCareer, listArchive, deleteArchived, compareCareers } from '../engine/archive.js';
 
 const state = {
   session: null,
@@ -33,6 +34,8 @@ const state = {
   eventOutcome: null,
   eventConsequences: [],
   careerEnd: null,
+  archiveError: null,
+  compare: null,
   notice: null,
   autosaveError: null,
 };
@@ -73,6 +76,11 @@ function finirCarriere() {
   state.pendingEvent = null;
   state.eventOutcome = null;
   state.eventConsequences = [];
+  // La fiche est prise MAINTENANT, tant que le monde qui l'a produite est
+  // encore là (étape 9K). Reconstituée plus tard, elle donnerait des chiffres
+  // que le joueur n'a jamais vus.
+  const res = archiveCareer(state.session);
+  state.archiveError = res.ok ? null : res.reason;
 }
 
 function autosave() {
@@ -233,6 +241,39 @@ export const actions = {
   /** Le joueur a lu la fin de sa carrière : on ne la lui repousse plus. */
   acknowledgeCareerEnd() {
     state.careerEnd = null;
+    notify();
+  },
+
+  /** Les carrières terminées, la plus récente d'abord (étape 9K). */
+  archive() {
+    return listArchive();
+  },
+
+  /** Met deux carrières côte à côte. `null` referme la comparaison. */
+  compareCareers(idA, idB) {
+    if (!idA || !idB || idA === idB) {
+      state.compare = null;
+      notify();
+      return null;
+    }
+    const fiches = listArchive();
+    const a = fiches.find((f) => f.id === idA);
+    const b = fiches.find((f) => f.id === idB);
+    state.compare = a && b ? compareCareers(a, b) : null;
+    notify();
+    return state.compare;
+  },
+
+  closeComparison() {
+    state.compare = null;
+    notify();
+  },
+
+  deleteArchived(id) {
+    deleteArchived(id);
+    if (state.compare && (state.compare.a.id === id || state.compare.b.id === id)) {
+      state.compare = null;
+    }
     notify();
   },
 

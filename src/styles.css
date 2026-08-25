@@ -1080,3 +1080,34 @@ details summary {
 /* L'état ressenti devant un choix risqué (étape 9I). */
 .etat-ressenti { font-size: 0.86rem; color: #e0c56b; margin: 2px 0 10px; }
 .etat-ressenti.lourd { color: #ff9b8a; font-weight: 600; }
+
+/* Le musée des carrières terminées (étape 9K). */
+.fiches { display: grid; gap: 12px; }
+.fiche { cursor: pointer; border: 1px solid transparent; transition: border-color 120ms; }
+.fiche:hover { border-color: rgba(90, 160, 255, 0.3); }
+.fiche.choisie { border-color: #5aa0ff; box-shadow: 0 0 0 1px rgba(90, 160, 255, 0.35) inset; }
+.fiche-tete { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.fiche-tete h2 { margin: 0 0 2px; }
+.fiche-score { font-size: 1.9rem; font-weight: 700; line-height: 1; }
+.fiche-score span { font-size: 0.8rem; color: #7f8b9e; font-weight: 400; }
+.fiche-chiffres { display: flex; gap: 18px; flex-wrap: wrap; margin: 10px 0 4px; }
+.muted.small { font-size: 0.8rem; }
+button.ghost.small { font-size: 0.78rem; padding: 3px 8px; margin-top: 6px; }
+
+.comparaison { border-left: 3px solid #5aa0ff; }
+.comp-tete { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.comp-nom { display: flex; flex-direction: column; }
+.comp-nom.b { text-align: right; }
+.comp-vs { color: #7f8b9e; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.1em; }
+.comp-resume { font-size: 0.92rem; line-height: 1.55; margin: 0 0 10px; }
+.comp-table { width: 100%; border-collapse: collapse; }
+.comp-table th {
+  font-weight: 400; color: #7f8b9e; font-size: 0.8rem; text-align: center;
+  padding: 5px 8px; white-space: nowrap;
+}
+.comp-table td { padding: 5px 8px; font-variant-numeric: tabular-nums; width: 34%; }
+.comp-table td:first-child { text-align: right; }
+.comp-table td:last-child { text-align: left; }
+.comp-val { color: #7f8b9e; }
+.comp-val.gagne { color: #7fd6a1; font-weight: 700; }
+.comp-table tr:nth-child(odd) { background: rgba(255, 255, 255, 0.02); }
