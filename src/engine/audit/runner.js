@@ -28,7 +28,7 @@ import { generateWorld } from '../worldgen.js';
 import { validateWorld, validateCareer } from '../validator.js';
 import { STATUS } from '../person.js';
 import { WEEKS_PER_YEAR, yearOf } from '../time.js';
-import { createPolicyState, pickChoice, POLICY_IDS } from './policies.js';
+import { createPolicyState, pickChoice, POLICY_IDS, ROUTINE_REFRESH_WEEKS } from './policies.js';
 import {
   careerMetrics,
   worldMetrics,
@@ -102,6 +102,19 @@ export function runOneCareer({
   const session = createSession({ seed, startYear: 2030, difficulty, player });
   if (policyState.policy.routine) setRoutine(session, policyState.policy.routine);
 
+  /**
+   * Une politique peut recalculer sa routine en cours de route (étape 9J).
+   * Les politiques existantes n'ont pas `routineFor` : leur comportement est
+   * inchangé au bit près, et les calibrages qui reposent dessus aussi.
+   */
+  const joueur = session.world.persons[session.career.personId];
+  const rafraichirRoutine = () => {
+    if (!policyState.policy.routineFor) return;
+    const suivante = policyState.policy.routineFor(joueur, policyState.rng);
+    if (suivante?.length) setRoutine(session, suivante);
+  };
+  rafraichirRoutine();
+
   const orgSnapshot = collectWorld ? snapshotOrgTiers(session.world) : null;
   const teamSnapshot = collectWorld ? snapshotTeams(session.world) : null;
 
@@ -117,6 +130,7 @@ export function runOneCareer({
 
   try {
     while (!session.career.retired && weeks < maxWeeks) {
+      if (weeks % ROUTINE_REFRESH_WEEKS === 0) rafraichirRoutine();
       const report = advanceWeek(session);
       weeks++;
 

@@ -11,6 +11,7 @@
  */
 
 import { RNG } from '../rng.js';
+import { npcRoutine } from '../progression.js';
 
 /** Mots-clés repérables dans les libellés visibles par le joueur. */
 const KEYWORDS = {
@@ -117,6 +118,42 @@ export const POLICIES = {
     },
   },
 };
+
+/**
+ * Un joueur qui se pilote (étape 9J).
+ *
+ * POURQUOI CETTE POLITIQUE EXISTE
+ * -------------------------------
+ * Toutes les autres jouent une routine FIXE et ne se reposent jamais. Les PNJ,
+ * eux, insèrent repos, travail mental ou vie sociale dès que la fatigue ou le
+ * stress montent (`npcRoutine`). Comparer les deux, c'est comparer un mauvais
+ * pilote à un pilote correct — et j'ai tiré trois diagnostics faux de cette
+ * confusion avant de m'en apercevoir :
+ *
+ *   - « le joueur ne réalise que 86 % de son potentiel contre 94 % pour un
+ *     PNJ » : avec cette routine-ci, 92 %, soit la valeur des PNJ ;
+ *   - « le moral du joueur est effondré » : moral médian 10 avec une routine
+ *     fixe, 96 avec celle-ci ;
+ *   - « le sommet mondial est inatteignable » : conclusion tirée d'un
+ *     échantillon que ces politiques rendaient non représentatif.
+ *
+ * Elle réutilise `npcRoutine` telle quelle, sans en réécrire une variante :
+ * la question qu'elle pose est précisément « et si le joueur se ménageait
+ * exactement comme le monde le fait ? ». Une routine parallèle, même proche,
+ * répondrait à une autre question.
+ */
+POLICIES.lucide = {
+  label: 'Lucide',
+  // Pas de routine fixe : elle est recalculée en cours de route.
+  routineFor: (person, rng) => npcRoutine(person, rng),
+  choose: (choices, ctx) => {
+    const sans = choices.findIndex((c) => !c.risky);
+    return sans >= 0 ? sans : ctx.rng.int(0, choices.length - 1);
+  },
+};
+
+/** Toutes les quatre semaines, comme les PNJ : même cadence, même physique. */
+export const ROUTINE_REFRESH_WEEKS = 4;
 
 export const POLICY_IDS = Object.keys(POLICIES);
 

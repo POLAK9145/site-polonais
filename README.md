@@ -334,6 +334,13 @@ npm test
 Les tests ne vérifient pas que le code compile : ils **jouent des carrières
 entières** et contrôlent les invariants du §60.
 
+L'audit dispose d'une politique **« lucide »** qui recalcule sa routine en
+cours de route, comme les PNJ le font : elle sert de point de comparaison
+honnête. Les autres politiques jouent une routine figée — c'est voulu, ce sont
+des archétypes extrêmes — mais mesurer le joueur contre le monde avec elles
+revient à comparer un mauvais pilote à un pilote correct. Trois diagnostics
+faux en sont sortis avant que l'instrument ne soit réparé.
+
 Couverture notable :
 
 - déterminisme du RNG et reproductibilité d'un monde par seed ;
