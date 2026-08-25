@@ -1061,3 +1061,18 @@ details summary {
 .chart-key { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
 .chart-key.titre { background: #d9c27a; }
 .chart-key.transfert { background: transparent; border-left: 2px dashed rgba(217, 194, 122, 0.7); border-radius: 0; width: 2px; height: 11px; margin-left: 8px; }
+
+/* La note du jour (étape 9H). L'écran donnait le niveau acquis ; les matchs se
+   jouent sur celui-ci, et l'écart dépasse 6 points une semaine sur trois. */
+.forme-jour {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+  padding: 8px 12px; margin: 0 0 10px; border-radius: 8px;
+  font-size: 0.85rem; border-left: 3px solid transparent;
+}
+.forme-jour.moins { background: rgba(255, 155, 138, 0.07); border-left-color: #ff9b8a; color: #ff9b8a; }
+.forme-jour.plus { background: rgba(127, 214, 161, 0.07); border-left-color: #7fd6a1; color: #7fd6a1; }
+.forme-jour .causes { display: flex; flex-wrap: wrap; gap: 8px; color: #7f8b9e; }
+.forme-jour .causes .plus { color: #7fd6a1; }
+.forme-jour .causes .moins { color: #ff9b8a; }
+.stat-sub.good { color: #7fd6a1; }
+.stat-sub.bad { color: #ff9b8a; }

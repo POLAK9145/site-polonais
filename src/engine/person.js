@@ -225,15 +225,34 @@ export function setFamiliarity(p, gameId, v) {
  * profil, la familiarité, la forme, la fatigue et le moral. Elle n'est
  * jamais stockée — elle se recalcule, donc elle bouge avec le contexte.
  */
-export function effectiveRating(p, game, { includeCondition = true } = {}) {
+/**
+ * Le détail de la note du jour : d'où vient l'écart entre ce qu'on vaut et ce
+ * qu'on vaut AUJOURD'HUI (étape 9H).
+ *
+ * Cette décomposition est la seule définition de la note effective —
+ * `effectiveRating` l'appelle. Écrire la formule à deux endroits, c'est
+ * garantir qu'un jour l'écran affichera un détail qui ne fait pas la somme
+ * annoncée.
+ *
+ * Les trois termes portent leur signe : la forme peut aider comme nuire, la
+ * fatigue ne fait que coûter, et le moral rapporte au-dessus de 60.
+ */
+export function ratingBreakdown(p, game) {
   const base = ratingForGame(p.attrs, game, {
     familiarity: getFamiliarity(p, game.id),
     roleId: p.roleId,
   });
-  if (!includeCondition) return base;
-  const fatiguePenalty = Math.max(0, p.fatigue - 45) * 0.16;
-  const moralePenalty = (60 - clamp(p.morale, 0, 100)) * 0.05;
-  return clamp(base + p.form - fatiguePenalty - moralePenalty, 1, 99);
+  // `+ 0` normalise le zéro négatif : `-Math.max(0, 0) * 0.16` vaut `-0`, que
+  // l'écran afficherait « -0 » et qu'une comparaison stricte distingue de 0.
+  const forme = p.form + 0;
+  const fatigue = -Math.max(0, p.fatigue - 45) * 0.16 + 0;
+  const moral = -(60 - clamp(p.morale, 0, 100)) * 0.05 + 0;
+  return { base, forme, fatigue, moral, effectif: clamp(base + forme + fatigue + moral, 1, 99) };
+}
+
+export function effectiveRating(p, game, { includeCondition = true } = {}) {
+  const d = ratingBreakdown(p, game);
+  return includeCondition ? d.effectif : d.base;
 }
 
 /** Note « propre », sans forme ni fatigue : sert au scouting et aux classements. */

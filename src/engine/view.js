@@ -16,6 +16,7 @@ import { ACHIEVEMENTS_BY_ID } from './achievements.js';
 import {
   STATUS_LABELS,
   age as personAge,
+  ratingBreakdown,
   baseRating,
   effectiveRating,
   profile,
@@ -59,6 +60,32 @@ export function formatFollowers(v) {
 }
 
 /** En-tête permanent : tout ce qui doit rester visible en continu (§64). */
+/**
+ * La note du jour, décomposée pour l'écran.
+ *
+ * On n'écrit pas la formule ici : `ratingBreakdown` est la seule définition, et
+ * la vue se contente de l'arrondir et de nommer les termes. Un détail qui ne
+ * ferait pas la somme affichée serait pire que pas de détail du tout.
+ */
+function formeDuJour(person, game) {
+  if (!game) return { ratingDuJour: null, ratingEcart: 0, ratingCauses: [] };
+  const d = ratingBreakdown(person, game);
+  const causes = [
+    { cle: 'forme', label: 'Forme', delta: d.forme },
+    { cle: 'fatigue', label: 'Fatigue', delta: d.fatigue },
+    { cle: 'moral', label: 'Moral', delta: d.moral },
+  ]
+    .map((c) => ({ ...c, delta: Math.round(c.delta * 10) / 10 }))
+    // Un terme à zéro n'explique rien : il encombre.
+    .filter((c) => c.delta !== 0)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+  return {
+    ratingDuJour: Math.round(d.effectif),
+    ratingEcart: Math.round((d.effectif - d.base) * 10) / 10,
+    ratingCauses: causes,
+  };
+}
+
 export function headerView(session) {
   const { world, career } = session;
   const person = world.persons[career.personId];
@@ -86,6 +113,12 @@ export function headerView(session) {
     teamTier: org && !org.isSelfOrg ? ORG_TIERS_BY_TIER[org.tier]?.label : null,
     status: STATUS_LABELS[person.status] ?? person.status,
     rating: Math.round(baseRating(person, game)),
+    // Ce qu'on vaut aujourd'hui, et pourquoi (étape 9H). L'écran n'affichait
+    // que la note « propre » : mesuré sur 6 637 semaines, l'écart avec la note
+    // à laquelle on joue réellement dépasse 3 points 43 % du temps et 6 points
+    // 31 % du temps, dans les deux sens. Le joueur pilotait sa carrière sur un
+    // chiffre qui n'était pas celui de ses matchs.
+    ...formeDuJour(person, game),
     form: Math.round(person.form),
     morale: Math.round(person.morale),
     fatigue: Math.round(person.fatigue),

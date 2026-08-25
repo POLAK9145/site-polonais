@@ -38,6 +38,24 @@ export default function CareerScreen() {
     <div className="screen career">
       <HeaderPanel head={head} session={session} />
 
+      {/* Ce qui sépare le niveau acquis de celui du jour (étape 9H). Le joueur
+          voyait « Niveau 69 » et jouait à 59 sans que rien ne le dise. */}
+      {head.ratingDuJour != null && Math.abs(head.ratingEcart) >= 1 && (
+        <div className={`forme-jour ${head.ratingEcart < 0 ? 'moins' : 'plus'}`}>
+          <strong>
+            Vous jouez actuellement à {head.ratingDuJour}
+            {' '}({head.ratingEcart > 0 ? `+${head.ratingEcart}` : head.ratingEcart})
+          </strong>
+          <span className="causes">
+            {head.ratingCauses.map((c) => (
+              <span key={c.cle} className={c.delta > 0 ? 'plus' : 'moins'}>
+                {c.label} {c.delta > 0 ? `+${c.delta}` : c.delta}
+              </span>
+            ))}
+          </span>
+        </div>
+      )}
+
       {state.notice && (
         <div className="notice" onClick={actions.clearNotice}>
           {state.notice} <span className="muted">(toucher pour fermer)</span>
@@ -93,7 +111,16 @@ function HeaderPanel({ head, session }) {
       <div className="header-grid">
         <Stat label="Jeu" value={head.gameShort} sub={`patch ${head.patch}`} />
         <Stat label="Équipe" value={head.team ?? 'Sans équipe'} sub={head.teamTier ?? head.status} />
-        <Stat label="Niveau" value={head.rating} sub={`méta : ${head.meta}`} />
+        <Stat
+          label="Niveau"
+          value={head.rating}
+          sub={
+            head.ratingDuJour != null && Math.abs(head.ratingEcart) >= 1
+              ? `aujourd’hui ${head.ratingDuJour}`
+              : `méta : ${head.meta}`
+          }
+          ton={head.ratingEcart <= -1 ? 'bad' : head.ratingEcart >= 1 ? 'good' : ''}
+        />
         <Stat
           label="Forme"
           value={head.form > 0 ? `+${head.form}` : head.form}
@@ -180,12 +207,12 @@ function ChargeBloc({ session }) {
   );
 }
 
-function Stat({ label, value, sub }) {
+function Stat({ label, value, sub, ton = '' }) {
   return (
     <div className="stat">
       <span className="stat-label">{label}</span>
       <strong className="stat-value">{value}</strong>
-      {sub && <span className="stat-sub">{sub}</span>}
+      {sub && <span className={`stat-sub ${ton}`}>{sub}</span>}
     </div>
   );
 }

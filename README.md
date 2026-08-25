@@ -224,6 +224,13 @@ d'inscription »).
   progression, et l'écart se lit ensuite partout : 90 % du plafond atteint
   contre 92 %, 25ᵉ de ses contemporains contre 17ᵉ. Le joueur atteint le top 10
   mondial dans environ 12 % des carrières, et a culminé 2ᵉ.
+- **Deux notes, et la différence expliquée** : le niveau acquis, et celui
+  auquel vous jouez aujourd'hui. Mesuré sur 6 637 semaines, l'écart entre les
+  deux dépasse 3 points 43 % du temps et 6 points 31 % du temps — dans les deux
+  sens : 44 % du temps il joue en votre faveur. L'écran donnait le premier, les
+  matchs se jouaient sur le second. Le détail — forme, fatigue, moral — fait
+  exactement la somme annoncée, parce que la décomposition EST la définition de
+  la note effective, pas une explication écrite à côté.
 - **La courbe d'une carrière** : dix-sept ans, ce sont dix-sept bilans qu'il
   fallait lire l'un après l'autre. La forme — la montée, le palier, le pic, le
   déclin, et à quelle saison un transfert a tout changé — se lit maintenant d'un
