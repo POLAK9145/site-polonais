@@ -1120,3 +1120,7 @@ button.ghost.small { font-size: 0.78rem; padding: 3px 8px; margin-top: 6px; }
 .record .muted { font-size: 0.76rem; }
 .records-battus { border-left: 3px solid #d9c27a; }
 .record-ligne { margin: 3px 0; font-size: 0.92rem; }
+
+/* Succès cachés (§35, étape 9M). */
+.secrets { font-size: 0.9rem; margin: 0 0 10px; color: #b9a4e8; }
+.secrets.trouve { color: #7fd6a1; }

@@ -10,6 +10,20 @@ import { STATUS, age as personAge } from './person.js';
 import { addAchievement, hasAchievement } from './career.js';
 import { WEEKS_PER_YEAR } from './time.js';
 
+/**
+ * Certains succès sont CACHÉS jusqu'à ce qu'on les débloque (§35, étape 9M).
+ *
+ * La règle n'est pas la rareté, c'est la nature : un succès qu'on VISE reste
+ * visible — remporter un titre, tenir dix ans, atteindre 100 000 abonnés sont
+ * des objectifs, et les cacher priverait le joueur de repères. Un succès qui
+ * décrit un CHEMIN inhabituel — changer de jeu, revenir après une traversée du
+ * désert, devenir une figure controversée — est caché : l'annoncer d'avance le
+ * transformerait en case à cocher, et c'est exactement ce qu'il ne doit pas
+ * être.
+ *
+ * Ils ne sont pas plus difficiles, ils sont différemment atteints. Une fois
+ * débloqués, ils s'affichent comme les autres, entièrement décrits.
+ */
 export const ACHIEVEMENTS = [
   { id: 'first_contract', label: 'Premier contrat', desc: 'Signer votre premier contrat.', rarity: 'commun' },
   { id: 'first_title', label: 'Premier titre', desc: 'Remporter une compétition.', rarity: 'commun' },
@@ -19,23 +33,23 @@ export const ACHIEVEMENTS = [
   { id: 'world_champion', label: 'Champion du monde', desc: 'Remporter un championnat du monde.', rarity: 'très rare' },
   { id: 'mvp_10', label: 'Homme du match', desc: 'Être MVP dix fois.', rarity: 'peu commun' },
   { id: 'became_captain', label: 'Capitaine', desc: 'Devenir meneur de jeu.', rarity: 'peu commun' },
-  { id: 'beat_rival', label: 'Le duel', desc: 'Battre votre rival dans un match décisif.', rarity: 'peu commun' },
-  { id: 'game_switcher', label: 'Reconversion', desc: 'Réussir un changement de jeu complet.', rarity: 'rare' },
-  { id: 'multi_game_pro', label: 'Polyvalent', desc: 'Être professionnel sur deux jeux différents.', rarity: 'très rare' },
-  { id: 'meta_creator', label: 'Créateur de méta', desc: 'Inventer une stratégie adoptée par la scène.', rarity: 'très rare' },
+  { id: 'beat_rival', label: 'Le duel', desc: 'Battre votre rival dans un match décisif.', rarity: 'peu commun', hidden: true },
+  { id: 'game_switcher', label: 'Reconversion', desc: 'Réussir un changement de jeu complet.', rarity: 'rare', hidden: true },
+  { id: 'multi_game_pro', label: 'Polyvalent', desc: 'Être professionnel sur deux jeux différents.', rarity: 'très rare', hidden: true },
+  { id: 'meta_creator', label: 'Créateur de méta', desc: 'Inventer une stratégie adoptée par la scène.', rarity: 'très rare', hidden: true },
   { id: 'popular_100k', label: '100 000 abonnés', desc: 'Atteindre 100 000 abonnés.', rarity: 'peu commun' },
   { id: 'popular_1m', label: 'Star', desc: 'Atteindre un million d’abonnés.', rarity: 'rare' },
   { id: 'long_career', label: 'Longévité', desc: 'Tenir dix ans de carrière.', rarity: 'rare' },
   { id: 'very_long_career', label: 'Increvable', desc: 'Tenir quinze ans de carrière.', rarity: 'très rare' },
-  { id: 'comeback_king', label: 'Retour au sommet', desc: 'Retrouver votre meilleur niveau après une chute majeure.', rarity: 'rare' },
+  { id: 'comeback_king', label: 'Retour au sommet', desc: 'Retrouver votre meilleur niveau après une chute majeure.', rarity: 'rare', hidden: true },
   { id: 'loyal_five_years', label: 'Fidèle', desc: 'Rester cinq ans dans la même organisation.', rarity: 'rare' },
   { id: 'journeyman', label: 'Nomade', desc: 'Jouer pour cinq organisations différentes.', rarity: 'peu commun' },
-  { id: 'undrafted', label: 'Sans équipe', desc: 'Rester un an sans équipe et revenir en compétition.', rarity: 'rare' },
+  { id: 'undrafted', label: 'Sans équipe', desc: 'Rester un an sans équipe et revenir en compétition.', rarity: 'rare', hidden: true },
   { id: 'millionaire', label: 'Million', desc: 'Cumuler un million d’euros de gains.', rarity: 'très rare' },
   { id: 'respected', label: 'Respecté', desc: 'Atteindre une réputation maximale auprès des professionnels.', rarity: 'rare' },
-  { id: 'infamous', label: 'Sulfureux', desc: 'Devenir une figure ouvertement controversée.', rarity: 'peu commun' },
-  { id: 'mentor', label: 'Mentor', desc: 'Former un joueur qui perce au plus haut niveau.', rarity: 'rare' },
-  { id: 'survivor', label: 'Debout', desc: 'Revenir en compétition après un épisode de surmenage.', rarity: 'peu commun' },
+  { id: 'infamous', label: 'Sulfureux', desc: 'Devenir une figure ouvertement controversée.', rarity: 'peu commun', hidden: true },
+  { id: 'mentor', label: 'Mentor', desc: 'Former un joueur qui perce au plus haut niveau.', rarity: 'rare', hidden: true },
+  { id: 'survivor', label: 'Debout', desc: 'Revenir en compétition après un épisode de surmenage.', rarity: 'peu commun', hidden: true },
 ];
 
 export const ACHIEVEMENTS_BY_ID = Object.fromEntries(ACHIEVEMENTS.map((a) => [a.id, a]));

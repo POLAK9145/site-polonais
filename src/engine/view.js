@@ -676,9 +676,17 @@ export function statsView(session) {
       year: a.year,
       ...(ACHIEVEMENTS_BY_ID[a.id] ?? { label: a.id, desc: '', rarity: 'commun' }),
     })),
+    // Les succès encore à décrocher, et parmi eux ceux qu'on ne nomme pas
+    // (§35, étape 9M). Un objectif qu'on vise reste visible ; un chemin
+    // inhabituel se découvre en le prenant.
     lockedAchievements: Object.values(ACHIEVEMENTS_BY_ID)
-      .filter((a) => !career.achievements.some((x) => x.id === a.id))
+      .filter((a) => !a.hidden && !career.achievements.some((x) => x.id === a.id))
       .map((a) => ({ id: a.id, label: a.label, desc: a.desc, rarity: a.rarity })),
+    // Un nombre, jamais une liste : dire lesquels reviendrait à ne pas les
+    // cacher. Zéro quand il n'en reste aucun — et l'écran le dit alors.
+    hiddenRemaining: Object.values(ACHIEVEMENTS_BY_ID)
+      .filter((a) => a.hidden && !career.achievements.some((x) => x.id === a.id)).length,
+    hiddenTotal: Object.values(ACHIEVEMENTS_BY_ID).filter((a) => a.hidden).length,
   };
 }
 

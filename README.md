@@ -258,6 +258,11 @@ d'inscription »).
   avec son détenteur. Quand une carrière en bat un, elle le dit au moment de sa
   retraite. Une première carrière n'en établit aucun : il n'y avait rien à
   battre.
+- **Neuf succès qu'on ne vous annonce pas** : ce qui est caché n'est pas ce qui
+  est rare, c'est ce qui décrit un chemin — changer de jeu, revenir après une
+  traversée du désert, devenir une figure controversée. Les objectifs qu'on vise
+  restent visibles : un jeu de carrière doit dire vers quoi on peut aller. Seul
+  leur nombre est affiché, jamais leur liste.
 - **Sauvegarde locale** compacte, versionnée, avec reprise automatique.
 
 ## Ce qui n'existe pas encore
@@ -270,7 +275,6 @@ Listé explicitement pour ne rien prétendre (§83) :
 - **Défi quotidien et classements** (§37) : le déterminisme par seed rend le
   mode possible, il n'est pas construit.
 - **Scénarios prédéfinis** (§38) et **mode « what if »** (§39).
-- **Objectifs cachés** (§35) : seuls les objectifs visibles sont calculés.
 - **Une échelle de risque graduée sur les choix** (du type « sûr / puissant /
   légendaire »). Écartée par la mesure, pas par manque de temps : rejoué 14 fois
   depuis un état identique sur 12 occasions, un choix risqué ne produit pas plus

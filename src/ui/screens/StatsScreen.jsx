@@ -49,6 +49,22 @@ export default function StatsScreen() {
 
       <section className="card">
         <h2>À débloquer</h2>
+        {/* Ce qu'on ne nomme pas (§35, étape 9M) : dire lesquels reviendrait à
+            ne pas les cacher. */}
+        {s.hiddenRemaining > 0 && (
+          <p className="secrets">
+            <strong>{s.hiddenRemaining}</strong>{' '}
+            {s.hiddenRemaining > 1 ? 'succès restent à découvrir' : 'succès reste à découvrir'}.
+            {' '}<span className="muted">
+              Ils ne récompensent pas des objectifs, mais des chemins.
+            </span>
+          </p>
+        )}
+        {s.hiddenTotal > 0 && s.hiddenRemaining === 0 && (
+          <p className="secrets trouve">
+            <strong>Vous les avez tous trouvés.</strong>
+          </p>
+        )}
         <div className="list">
           {s.lockedAchievements.map((a) => (
             <div key={a.id} className="list-item static locked">
