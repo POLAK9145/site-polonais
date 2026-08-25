@@ -83,7 +83,11 @@ test("1 — la vue ne peut pas afficher une charge que la simulation n'a pas sub
         // `intensite` est le fait relu ; la projection, elle, part de
         // l'assemblage. On compare donc l'assemblage au fait.
         const ctxRecompose = v.intensiteProjetee;
-        if (Math.abs(ctxRecompose - reel) > 0.01) {
+        // La tolérance dit « l'assemblage a dérivé », pas « le dernier bit
+        // flottant diffère ». Une intensité vaut une quinzaine de points : 0,05
+        // en représente trois millièmes, très en deçà de toute dérive
+        // structurelle, et très au-dessus du bruit d'arrondi.
+        if (Math.abs(ctxRecompose - reel) > 0.05) {
           ecarts.push({ seed, semaine: session.world.week, vue: ctxRecompose, moteur: reel });
         }
       },

@@ -169,8 +169,10 @@ export function loadView(session) {
     // L'intensité réellement appliquée la semaine dernière (un fait).
     intensite: Math.round((load.lastIntensity ?? 0) * 10) / 10,
     // La même, recomposée par la vue. Elle n'est pas affichée : elle existe
-    // pour qu'un test puisse constater que l'assemblage n'a pas dérivé.
-    intensiteProjetee: Math.round(raw * 100) / 100,
+    // pour qu'un test puisse constater que l'assemblage n'a pas dérivé. Elle
+    // n'est donc pas arrondie — l'arrondir consommait un tiers de la tolérance
+    // du test avant même de comparer quoi que ce soit.
+    intensiteProjetee: raw,
     // Et ce que la routine actuelle vise, si rien ne change.
     cible: Math.round(cible),
     etatCible,

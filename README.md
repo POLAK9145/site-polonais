@@ -217,6 +217,13 @@ d'inscription »).
   correction : le joueur finissait avec 25 fois l'audience des PNJ de son
   propre monde ayant la même carrière, et l'écart était le plus grand chez ceux
   qui n'avaient jamais rien gagné.
+- **Se reposer change tout, et c'est mesurable** : sur 40 carrières de trente
+  ans, une routine qui ne cède jamais un créneau au repos ou à la vie sociale
+  laisse le moral à 10 en médiane ; la même carrière avec une routine qui insère
+  du repos quand la fatigue monte le laisse à 94. Le moral multiplie la
+  progression, et l'écart se lit ensuite partout : 90 % du plafond atteint
+  contre 92 %, 25ᵉ de ses contemporains contre 17ᵉ. Le joueur atteint le top 10
+  mondial dans environ 12 % des carrières, et a culminé 2ᵉ.
 - **Sauvegarde locale** compacte, versionnée, avec reprise automatique.
 
 ## Ce qui n'existe pas encore
@@ -243,27 +250,12 @@ Listé explicitement pour ne rien prétendre (§83) :
   trente** ne pouvait naître dans le dernier décile de sa propre génération.
   Aucune note de conception ne demande cet écart.
 
-  La correction a été écrite et mesurée, puis **retirée**. Elle relève le
-  potentiel médian de 71 à 78 mais ne change pas le résultat qui l'avait
-  motivée — toujours zéro top 10 — et casse trois tests dont deux demandent de
+  La correction a été écrite et mesurée, puis **retirée** : elle relève le
+  potentiel médian de 71 à 78, mais casse trois tests dont deux demandent de
   recalibrer des systèmes validés (les titres de presse de l'étape 9A, la
-  divergence des carrières à talent égal). Livrer un changement d'équilibre sans
-  bénéfice mesuré, au prix d'une cascade de recalibrages, n'en vaut pas le coût.
-  Elle repartira avec la correction de l'écart de réalisation, calibrée d'un
-  seul tenant.
-
-- **Le sommet mondial n'est pas atteignable.** Mesuré sur une quarantaine de
-  carrières de trente ans menées avec la meilleure politique d'entraînement,
-  dans quatre configurations du moteur : le joueur se classe autour du 60ᵉ-70ᵉ
-  centile de ses contemporains, son meilleur classement jamais observé est 11ᵉ,
-  et il n'entre **jamais** dans le top 10. La cause n'est pas le
-  potentiel de départ — le corriger n'a pas changé le résultat — mais l'écart
-  de réalisation : le joueur atteint 87 % de son plafond là où un PNJ en
-  atteint 94 %, et `progressPerson` isolé en donne 92,5 %. La perte se joue
-  donc dans le tour de semaine du joueur. Sont écartés par la mesure : le
-  traitement des PNJ par lots (+0,04 point), les événements (les couper aggrave
-  l'écart) et le temps passé sans équipe (1 % pour le joueur, 0 à 11 % pour les
-  PNJ). Le reste n'est pas élucidé.
+  divergence des carrières à talent égal). Livrer un changement d'équilibre au
+  prix d'une cascade de recalibrages demande une raison plus forte que la
+  cohérence des formules.
 
 Ces manques correspondent aux phases 5 et 6 du plan de développement. La
 priorité a été donnée à la profondeur des systèmes existants plutôt qu'au

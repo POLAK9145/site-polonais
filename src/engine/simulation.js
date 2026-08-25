@@ -21,7 +21,7 @@ import {
 import { createOrg, createTeam } from './org.js';
 import {
   addToRoster, removeFromRoster, computeSynergyTarget, detachFromAllTeams,
-  recordStint, coachQuality,
+  recordStint, coachQuality, teamStrength,
 } from './team.js';
 import { progressPerson, updateForm, burnoutPressure } from './progression.js';
 import { decayMetaShock } from './meta.js';
@@ -438,6 +438,11 @@ function runPlayerWeek(session, person, report) {
       weeks: 1,
       absWeek: world.week,
       matchLoad,
+      // Le niveau de l'équipe qui vous entoure fait progresser : on apprend
+      // plus vite entouré de meilleurs. Les PNJ recevaient ce terme depuis
+      // toujours, le joueur non — son appel omettait simplement l'argument, et
+      // la valeur par défaut est 0. Une seule physique pour tout le monde.
+      teamQuality: team ? clamp(teamStrength(world, team, { forMatch: false }).individual / 100, 0, 1) : 0,
       // Pression du contexte : c'est elle qui fait dépendre la charge de la
       // situation réelle du joueur — niveau de la structure, statut de
       // titulaire, attentes, résultats récents — et non de sa seule routine.
