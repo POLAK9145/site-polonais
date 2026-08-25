@@ -1076,3 +1076,7 @@ details summary {
 .forme-jour .causes .moins { color: #ff9b8a; }
 .stat-sub.good { color: #7fd6a1; }
 .stat-sub.bad { color: #ff9b8a; }
+
+/* L'état ressenti devant un choix risqué (étape 9I). */
+.etat-ressenti { font-size: 0.86rem; color: #e0c56b; margin: 2px 0 10px; }
+.etat-ressenti.lourd { color: #ff9b8a; font-weight: 600; }

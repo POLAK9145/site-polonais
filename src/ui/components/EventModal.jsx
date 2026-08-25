@@ -39,19 +39,34 @@ export default function EventModal({ event, outcome, consequences = [] }) {
             <button className="primary" onClick={actions.dismissEvent}>Continuer</button>
           </>
         ) : (
-          <div className="choices">
-            {event.choices.map((c) => (
-              <button
-                key={c.id}
-                className={`choice ${c.risky ? 'risky' : ''}`}
-                onClick={() => actions.chooseEvent(c.id)}
-              >
-                <strong>{c.label}</strong>
-                {c.hint && <span className="muted">{c.hint}</span>}
-                {c.risky && <span className="risk-tag">risqué</span>}
-              </button>
-            ))}
-          </div>
+          <>
+            {/* Ce que le joueur ressent déjà en tranchant (étape 9I).
+                Mesuré : ce qui décide de la casse n'est pas le choix mais la
+                charge accumulée — 8 carrières sur 12 en rupture chez qui
+                s'entraîne sans relâche, 0 sur 12 chez qui se ménage. L'état
+                n'est rappelé que devant un choix risqué, là où il pèse. */}
+            {event.charge && event.choices.some((c) => c.risky) && (
+              <p className={`etat-ressenti ${event.charge.lourde ? 'lourd' : ''}`}>
+                Vous abordez ce moment {event.charge.label}.
+              </p>
+            )}
+            <div className="choices">
+              {event.choices.map((c) => (
+                <button
+                  key={c.id}
+                  className={`choice ${c.risky ? 'risky' : ''}`}
+                  onClick={() => actions.chooseEvent(c.id)}
+                >
+                  <strong>{c.label}</strong>
+                  {c.hint && <span className="muted">{c.hint}</span>}
+                  {/* « risqué » se lisait comme « moins bien tout de suite ».
+                      Le vrai risque est ailleurs : 10 de ces 12 choix
+                      programment une suite différée ou tirent au sort. */}
+                  {c.risky && <span className="risk-tag">la suite peut coûter</span>}
+                </button>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>

@@ -18,6 +18,25 @@
 
 import { clamp } from '../rng.js';
 import { isTracing, trace, TRACE } from '../trace.js';
+import { LOAD_STATES } from '../load.js';
+
+/**
+ * Les mêmes mots que la fiche de charge (§8A) : le joueur doit reconnaître
+ * l'état qu'il voit déjà ailleurs, pas en apprendre un second vocabulaire.
+ */
+const LOAD_LABELS = {
+  [LOAD_STATES.TIRED]: 'fatigué',
+  [LOAD_STATES.PRESSURED]: 'sous pression',
+  [LOAD_STATES.OVERLOADED]: 'surmené',
+  [LOAD_STATES.DRAINED]: 'épuisé',
+  [LOAD_STATES.BURNOUT]: 'en burnout',
+  [LOAD_STATES.RECOVERING]: 'en récupération',
+};
+
+/** Les états où pousser encore coûte vraiment. */
+const LOURDES = new Set([
+  LOAD_STATES.OVERLOADED, LOAD_STATES.DRAINED, LOAD_STATES.BURNOUT,
+]);
 
 const registry = new Map();
 /** Handlers d'effets différés, adressés par type (sérialisables, §58). */
@@ -306,6 +325,16 @@ function unpackPick(world, packed, depth) {
   }
 }
 
+/**
+ * L'état de charge ressenti, tel que le moteur l'a enregistré. On relit, on ne
+ * recalcule pas : `updateLoad` écrit cet état chaque semaine.
+ */
+function chargeRessentie(person) {
+  const etat = person?.load?.state ?? null;
+  if (!etat || etat === LOAD_STATES.FRESH) return null;
+  return { etat, label: LOAD_LABELS[etat] ?? etat, lourde: LOURDES.has(etat) };
+}
+
 /** Prépare l'événement pour l'affichage : titre, texte, choix disponibles. */
 export function presentEvent(def, ctx) {
   const choices = (def.choices ?? [])
@@ -326,6 +355,18 @@ export function presentEvent(def, ctx) {
     title,
     text,
     choices,
+    // Ce que le joueur ressent déjà en tranchant (étape 9I).
+    //
+    // Mesuré : 10 des 12 choix marqués « risqué » programment une suite
+    // différée ou tirent au sort — c'est là qu'est le risque, pas dans un
+    // malus immédiat. Et ce qui décide vraiment de la casse, ce n'est pas le
+    // choix, c'est la charge accumulée : 8 carrières sur 12 en rupture chez un
+    // joueur qui s'entraîne sans relâche (charge 71), 0 sur 12 chez un joueur
+    // qui se ménage (charge 26).
+    //
+    // On ne montre donc pas une probabilité — mesurée, elle est plate à 25 % —
+    // mais l'état que le joueur peut réellement ressentir au moment de choisir.
+    charge: chargeRessentie(ctx.person),
     chainData: ctx.chainData ?? null,
     picks: snapshotPicks(ctx),
     auto: !def.choices?.length,

@@ -224,6 +224,13 @@ d'inscription »).
   progression, et l'écart se lit ensuite partout : 90 % du plafond atteint
   contre 92 %, 25ᵉ de ses contemporains contre 17ᵉ. Le joueur atteint le top 10
   mondial dans environ 12 % des carrières, et a culminé 2ᵉ.
+- **Un choix risqué dit ce qu'il risque** : « risqué » se lisait comme « moins
+  bien tout de suite ». Mesuré, c'est faux : 10 des 12 choix risqués programment
+  une suite différée ou tirent au sort — le risque est dans la suite. Et ce qui
+  décide vraiment de la casse n'est pas le choix mais la charge accumulée : 8
+  carrières sur 12 connaissent une rupture chez un joueur qui s'entraîne sans
+  relâche, 0 sur 12 chez un joueur qui se ménage. L'état ressenti est donc
+  rappelé au moment de trancher, et seulement là où il pèse.
 - **Deux notes, et la différence expliquée** : le niveau acquis, et celui
   auquel vous jouez aujourd'hui. Mesuré sur 6 637 semaines, l'écart entre les
   deux dépasse 3 points 43 % du temps et 6 points 31 % du temps — dans les deux
@@ -253,6 +260,15 @@ Listé explicitement pour ne rien prétendre (§83) :
 - **Comparaison de deux carrières** (§52).
 - **Records mondiaux persistants** (§68).
 - **Objectifs cachés** (§35) : seuls les objectifs visibles sont calculés.
+- **Une échelle de risque graduée sur les choix** (du type « sûr / puissant /
+  légendaire »). Écartée par la mesure, pas par manque de temps : rejoué 14 fois
+  depuis un état identique sur 12 occasions, un choix risqué ne produit pas plus
+  de dispersion qu'un choix sûr — ni en niveau (1,27 contre 1,87), ni en charge,
+  ni en moral, ni en ruptures. Et `crashRisk` vaut exactement zéro dans 99 % des
+  rencontres, donc le terme contextuel du calcul n'apporte rien : le risque réel
+  est plat, autour de 25 %. Graduer une étiquette sur une probabilité plate
+  serait de la décoration, et une décoration présentée comme une simulation est
+  un mensonge (§83).
 - **Le joueur naît moins doué que les adolescents de son monde.** Le joueur et
   le monde calculent la même grandeur — la marge de progression restante à un
   âge donné — avec deux formules différentes, et celle du joueur est la plus
