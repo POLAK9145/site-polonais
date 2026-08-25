@@ -23,7 +23,10 @@ import {
 } from '../engine/simulation.js';
 import { saveSession, loadSession, listSaves, deleteSave, exportSave, importSave } from '../engine/save.js';
 import { retirementView } from '../engine/view.js';
-import { archiveCareer, listArchive, deleteArchived, compareCareers } from '../engine/archive.js';
+import {
+  archiveCareer, listArchive, deleteArchived, compareCareers,
+  careerRecord, careerRecords, recordsBattus,
+} from '../engine/archive.js';
 
 const state = {
   session: null,
@@ -35,6 +38,7 @@ const state = {
   eventConsequences: [],
   careerEnd: null,
   archiveError: null,
+  recordsBattus: [],
   compare: null,
   notice: null,
   autosaveError: null,
@@ -76,6 +80,11 @@ function finirCarriere() {
   state.pendingEvent = null;
   state.eventOutcome = null;
   state.eventConsequences = [];
+  // Les records se mesurent AVANT l'archivage (étape 9L) : après, la carrière
+  // se comparerait à elle-même et battrait tous ses propres records.
+  const fiche = careerRecord(state.session);
+  state.recordsBattus = fiche ? recordsBattus(fiche, listArchive()) : [];
+
   // La fiche est prise MAINTENANT, tant que le monde qui l'a produite est
   // encore là (étape 9K). Reconstituée plus tard, elle donnerait des chiffres
   // que le joueur n'a jamais vus.
@@ -98,6 +107,7 @@ export const actions = {
     state.eventOutcome = null;
     state.eventConsequences = [];
     state.careerEnd = null;
+    state.recordsBattus = [];
     state.notice = null;
     autosave();
     notify();
@@ -241,12 +251,18 @@ export const actions = {
   /** Le joueur a lu la fin de sa carrière : on ne la lui repousse plus. */
   acknowledgeCareerEnd() {
     state.careerEnd = null;
+    state.recordsBattus = [];
     notify();
   },
 
   /** Les carrières terminées, la plus récente d'abord (étape 9K). */
   archive() {
     return listArchive();
+  },
+
+  /** Les records personnels détenus (§68, étape 9L). */
+  records() {
+    return careerRecords();
   },
 
   /** Met deux carrières côte à côte. `null` referme la comparaison. */

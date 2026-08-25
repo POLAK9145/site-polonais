@@ -1111,3 +1111,12 @@ button.ghost.small { font-size: 0.78rem; padding: 3px 8px; margin-top: 6px; }
 .comp-val { color: #7f8b9e; }
 .comp-val.gagne { color: #7fd6a1; font-weight: 700; }
 .comp-table tr:nth-child(odd) { background: rgba(255, 255, 255, 0.02); }
+
+/* Records personnels (§68, étape 9L). */
+.records-grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.record { display: flex; flex-direction: column; gap: 1px; }
+.record-label { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.08em; color: #7f8b9e; }
+.record strong { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.record .muted { font-size: 0.76rem; }
+.records-battus { border-left: 3px solid #d9c27a; }
+.record-ligne { margin: 3px 0; font-size: 0.92rem; }

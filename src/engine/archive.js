@@ -222,3 +222,78 @@ export function compareCareers(a, b) {
       .slice(0, 3),
   };
 }
+
+/**
+ * Les records personnels (§68, étape 9L).
+ *
+ * « Persistants » veut dire : tirés des carrières que le joueur a réellement
+ * menées, sur cette machine. Pas d'un classement en ligne — le jeu est hors
+ * ligne par construction et le restera. Ce que ces records mesurent, c'est
+ * votre propre histoire de joueur, pas celle des autres.
+ *
+ * Chaque record cite la carrière qui le détient : un record sans son détenteur
+ * n'est qu'un nombre.
+ */
+const RECORDS = [
+  { cle: 'global', label: 'Meilleure carrière', unite: 'score' },
+  { cle: 'annees', label: 'Plus longue carrière', unite: 'ans', decimales: 1 },
+  { cle: 'picNiveau', label: 'Plus haut niveau', unite: '', decimales: 1 },
+  { cle: 'titres', label: 'Plus de titres', unite: '' },
+  { cle: 'matchs', label: 'Plus de matchs', unite: '' },
+  { cle: 'gains', label: 'Plus gros gains', unite: '€' },
+  { cle: 'abonnes', label: 'Plus large audience', unite: 'abonnés' },
+];
+
+/**
+ * Les records détenus, dans l'ordre de la liste. Une grandeur sur laquelle
+ * toutes les carrières valent zéro n'est pas un record : elle est omise plutôt
+ * qu'affichée comme un exploit.
+ */
+export function careerRecords(fiches = null) {
+  const liste = fiches ?? listArchive();
+  if (liste.length === 0) return [];
+  return RECORDS
+    .map(({ cle, label, unite, decimales = 0 }) => {
+      let tenant = null;
+      for (const f of liste) {
+        const v = f[cle] ?? 0;
+        if (tenant === null || v > (tenant[cle] ?? 0)) tenant = f;
+      }
+      const valeur = tenant?.[cle] ?? 0;
+      if (!(valeur > 0)) return null;
+      return {
+        cle, label, unite, decimales,
+        valeur: Math.round(valeur * 10 ** decimales) / 10 ** decimales,
+        parNick: tenant.nick,
+        parId: tenant.id,
+        annee: tenant.finAnnee,
+      };
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Ce que la carrière qui vient de se terminer a battu.
+ *
+ * Appelé AVANT l'archivage, sinon la carrière se compare à elle-même et bat
+ * tous ses propres records. Une première carrière n'établit aucun record : il
+ * n'y avait rien à battre, et le dire serait flatter le joueur pour rien.
+ */
+export function recordsBattus(fiche, avant = null) {
+  const anciennes = (avant ?? listArchive()).filter((f) => f.id !== fiche.id);
+  if (anciennes.length === 0) return [];
+  const precedents = careerRecords(anciennes);
+  const battus = [];
+  for (const r of precedents) {
+    const valeur = fiche[r.cle] ?? 0;
+    if (valeur > r.valeur) {
+      battus.push({
+        cle: r.cle, label: r.label, unite: r.unite, decimales: r.decimales,
+        valeur: Math.round(valeur * 10 ** r.decimales) / 10 ** r.decimales,
+        ancien: r.valeur,
+        anciennementPar: r.parNick,
+      });
+    }
+  }
+  return battus;
+}

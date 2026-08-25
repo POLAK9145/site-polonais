@@ -253,6 +253,11 @@ d'inscription »).
   le joueur n'a jamais vus. Une grandeur qui ne se classe pas — le nombre de
   structures traversées — n'affiche aucun vainqueur : rester quinze ans au même
   endroit n'est ni mieux ni moins bien que d'en changer six fois.
+- **Vos records** : la plus longue carrière, le plus haut niveau, le plus gros
+  palmarès — tirés des carrières que vous avez réellement menées, chacun cité
+  avec son détenteur. Quand une carrière en bat un, elle le dit au moment de sa
+  retraite. Une première carrière n'en établit aucun : il n'y avait rien à
+  battre.
 - **Sauvegarde locale** compacte, versionnée, avec reprise automatique.
 
 ## Ce qui n'existe pas encore
@@ -265,7 +270,6 @@ Listé explicitement pour ne rien prétendre (§83) :
 - **Défi quotidien et classements** (§37) : le déterminisme par seed rend le
   mode possible, il n'est pas construit.
 - **Scénarios prédéfinis** (§38) et **mode « what if »** (§39).
-- **Records mondiaux persistants** (§68).
 - **Objectifs cachés** (§35) : seuls les objectifs visibles sont calculés.
 - **Une échelle de risque graduée sur les choix** (du type « sûr / puissant /
   légendaire »). Écartée par la mesure, pas par manque de temps : rejoué 14 fois

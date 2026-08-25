@@ -20,7 +20,14 @@ export default function CreateScreen() {
   const [originId, setOriginId] = useState('child_competitor');
   const [familyId, setFamilyId] = useState('supportive');
   const [difficulty, setDifficulty] = useState('standard');
-  const [identity, setIdentity] = useState(() => rollIdentity('weu', 1));
+  // Le tirage initial était figé sur la graine 1 : tout joueur qui ne touchait
+  // pas au nom obtenait le MÊME personnage, partie après partie (étape 9L). Vu
+  // en jouant — trois carrières d'affilée s'appelaient toutes « Cinderie », et
+  // le musée des carrières terminées n'affichait que des homonymes.
+  //
+  // L'identité n'a rien à voir avec la graine du monde : celle-ci reste
+  // saisissable et régénère toujours le même univers.
+  const [identity, setIdentity] = useState(() => rollIdentity('weu', Math.floor(Math.random() * 1e9)));
   const [age, setAge] = useState(17);
 
   const origin = ORIGINS.find((o) => o.id === originId);

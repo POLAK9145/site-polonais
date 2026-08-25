@@ -5,6 +5,13 @@ import { timelineView, memoriesView, formatMoney, careerChartView } from '../../
 import CareerChart from '../components/CareerChart.jsx';
 import Bar from '../components/Bar.jsx';
 
+/** Un record se lit dans son unité, pas en nombre brut. */
+function formatRecord(v, r) {
+  if (r.unite === '€') return formatMoney(v);
+  const n = r.decimales ? v.toFixed(r.decimales) : Math.round(v).toLocaleString('fr-FR');
+  return r.unite ? `${n} ${r.unite}` : n;
+}
+
 /**
  * L'annonce de la fin (étape 9C). Elle ne dit rien que le moteur n'ait
  * enregistré : la raison vient de `retireCareer`, la phrase de `FINS_SUBIES`.
@@ -69,6 +76,22 @@ export default function LegacyScreen() {
           rapport de la semaine, et le joueur restait devant sa routine
           d'entraînement sans savoir que c'était fini. */}
       {state.careerEnd && <FinDeCarriere fin={state.careerEnd} />}
+
+      {/* Ce que cette carrière a battu (étape 9L). Une première carrière
+          n'établit aucun record : il n'y avait rien à battre. */}
+      {state.recordsBattus?.length > 0 && (
+        <section className="card records-battus">
+          <h2>{state.recordsBattus.length > 1 ? 'Records battus' : 'Record battu'}</h2>
+          {state.recordsBattus.map((r) => (
+            <p key={r.cle} className="record-ligne">
+              <strong>{r.label}</strong> — {formatRecord(r.valeur, r)}
+              <span className="muted">
+                {' '}(précédent : {formatRecord(r.ancien, r)} par {r.anciennementPar})
+              </span>
+            </p>
+          ))}
+        </section>
+      )}
 
       <h1>{person.nick}</h1>
       <p className="archetype">{legacy.archetype.label}</p>

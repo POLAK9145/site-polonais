@@ -48,6 +48,8 @@ export default function ArchiveScreen() {
         {' '}Touchez-en deux pour les comparer.
       </p>
 
+      <Records liste={actions.records()} />
+
       {state.compare && <Comparaison c={state.compare} />}
 
       <div className="fiches">
@@ -59,6 +61,36 @@ export default function ArchiveScreen() {
       <button className="secondary" onClick={() => actions.quitToHome()}>Menu</button>
     </div>
   );
+}
+
+/**
+ * Les records personnels (§68). Tirés des carrières réellement menées sur
+ * cette machine — le jeu est hors ligne et le restera, il n'y a pas de
+ * classement mondial à afficher.
+ */
+function Records({ liste }) {
+  if (!liste || liste.length === 0) return null;
+  return (
+    <section className="card records">
+      <h2>Vos records</h2>
+      <div className="records-grille">
+        {liste.map((r) => (
+          <div key={r.cle} className="record">
+            <span className="record-label">{r.label}</span>
+            <strong>{formatRecordValeur(r.valeur, r)}</strong>
+            <span className="muted">{r.parNick} · {r.annee}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function formatRecordValeur(v, r) {
+  if (r.unite === '€') return formatMoney(v);
+  if (r.cle === 'abonnes') return formatFollowers(v);
+  const n = r.decimales ? v.toFixed(r.decimales) : Math.round(v).toLocaleString('fr-FR');
+  return r.unite && r.unite !== 'abonnés' ? `${n} ${r.unite}` : n;
 }
 
 function Fiche({ f, choisi, onClick }) {

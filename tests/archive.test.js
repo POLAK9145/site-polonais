@@ -21,7 +21,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { careerRecord, compareCareers, VERSION_FICHE } from '../src/engine/archive.js';
+import {
+  careerRecord, compareCareers, VERSION_FICHE, careerRecords, recordsBattus,
+} from '../src/engine/archive.js';
 import { computeLegacy, careerStats } from '../src/engine/legacy.js';
 import { runOneCareer } from '../src/engine/audit/runner.js';
 import { retireCareer } from '../src/engine/simulation.js';
@@ -156,4 +158,60 @@ test('deux carrières homonymes restent distinguables', () => {
   const distinct = compareCareers(a, { ...b, nick: 'AutreNom' });
   assert.equal(distinct.memeNom, false);
   assert.equal(distinct.a.etiquette, a.nick);
+});
+
+// --- Records personnels (§68, étape 9L) -------------------------------------
+
+test('une première carrière ne bat aucun record', () => {
+  // Il n'y avait rien à battre. Annoncer un record serait flatter le joueur
+  // pour rien, et dévaluerait ceux qu'il battra vraiment.
+  const f = careerRecord(terminees()[0]);
+  assert.deepEqual(recordsBattus(f, []), []);
+});
+
+test('un record est détenu par la carrière qui l’a établi', () => {
+  const fiches = terminees().map(careerRecord);
+  const records = careerRecords(fiches);
+  assert.ok(records.length > 0);
+  for (const r of records) {
+    const detenteur = fiches.find((f) => f.id === r.parId);
+    assert.ok(detenteur, `${r.label} : détenteur introuvable`);
+    assert.equal(detenteur[r.cle], fiches.reduce((m, f) => Math.max(m, f[r.cle] ?? 0), 0));
+    assert.equal(r.parNick, detenteur.nick);
+  }
+});
+
+test('une grandeur restée à zéro n’est pas un record', () => {
+  const base = careerRecord(terminees()[0]);
+  const vides = [{ ...base, titres: 0, gains: 0, abonnes: 0 }];
+  const records = careerRecords(vides);
+  for (const cle of ['titres', 'gains', 'abonnes']) {
+    assert.ok(!records.some((r) => r.cle === cle), `${cle} à zéro affiché comme un exploit`);
+  }
+});
+
+test('battre un record est signalé, l’égaler ne l’est pas', () => {
+  const [a] = terminees().map(careerRecord);
+  const ancienne = { ...a, id: 'ancienne', titres: 5 };
+
+  const egale = recordsBattus({ ...a, id: 'neuve', titres: 5 }, [ancienne]);
+  assert.ok(!egale.some((r) => r.cle === 'titres'), 'égaler n’est pas battre');
+
+  const bat = recordsBattus({ ...a, id: 'neuve', titres: 6 }, [ancienne]);
+  const ligne = bat.find((r) => r.cle === 'titres');
+  assert.ok(ligne, 'six titres contre cinq devrait être un record');
+  assert.equal(ligne.valeur, 6);
+  assert.equal(ligne.ancien, 5);
+  assert.equal(ligne.anciennementPar, ancienne.nick);
+});
+
+test('une carrière ne bat pas ses propres records', () => {
+  // Le piège : mesurer après l'archivage. La carrière se comparerait à
+  // elle-même et battrait tout.
+  const [a] = terminees().map(careerRecord);
+  assert.deepEqual(recordsBattus(a, [a]), []);
+});
+
+test('sans aucune carrière archivée, il n’y a pas de records', () => {
+  assert.deepEqual(careerRecords([]), []);
 });
