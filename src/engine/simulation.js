@@ -728,7 +728,19 @@ function seasonHeadline(person, bilan, org) {
     return `${nom}, une saison pour rien`;
   }
 
-  if (bilan.titles > 0 && bilan.mvps > 0) return `${nom} règne sur la saison`;
+  // LE TITRE LE PLUS FORT DOIT RESTER RARE (étape 10C).
+  //
+  // La condition était « un titre et un MVP ». Elle valait quand le joueur en
+  // gagnait 1,2 par carrière ; après l'étape 9O il en gagne 2,1, et le verdict
+  // suprême tombait sur 17,4 % des saisons — une sur six. Un superlatif qui
+  // sort une saison sur six n'est plus un superlatif.
+  //
+  // Seuil relevé sur la distribution réelle de 408 saisons, comme les autres
+  // de cette échelle : deux titres et un MVP sortent sur 4,2 % des saisons.
+  // Exiger deux MVP en plus ne change rien (4,2 % aussi) : c'est le second
+  // titre qui fait la rareté, pas la distinction individuelle.
+  if (bilan.titles >= 2 && bilan.mvps > 0) return `${nom} règne sur la saison`;
+  if (bilan.titles > 0 && bilan.mvps > 0) return `${nom} rafle tout avec ${club}`;
   if (bilan.titles > 0) return `${nom} soulève enfin un trophée avec ${club}`;
   if (bilan.finals > 0) return `Si près : ${nom} tombe en finale`;
   if (bilan.matches <= 4) return `${nom}, l'homme invisible de ${club}`;

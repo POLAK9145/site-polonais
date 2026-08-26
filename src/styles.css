@@ -1130,3 +1130,17 @@ button.ghost.small { font-size: 0.78rem; padding: 3px 8px; margin-top: 6px; }
 .list-item.defi { border-left: 3px solid #d9c27a; margin-bottom: 10px; }
 .rejeu { border-left: 3px solid #5aa0ff; }
 .fiche-actions { display: flex; gap: 8px; margin-top: 6px; }
+
+/* En-tête repliable (étape 10B). Mesuré sur téléphone : l'en-tête occupait un
+   écran et demi avant qu'on atteigne le jeu. */
+.header.replie { padding-bottom: 8px; }
+.header-resume {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline;
+  margin: 8px 0 2px; font-size: 0.9rem;
+}
+.header-resume strong { font-size: 1.15rem; }
+.entete-bascule {
+  background: none; border: none; padding: 4px 0; margin-top: 2px;
+  color: #7f8b9e; font-size: 0.78rem; cursor: pointer; text-decoration: underline;
+}
+.entete-bascule:hover { color: #9fb0c8; }

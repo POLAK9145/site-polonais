@@ -63,6 +63,19 @@ function rivalCandidate(ctx) {
   return best;
 }
 
+/**
+ * Ce qui justifie qu'on propose un autre jeu : une scène qui s'effondre, un
+ * joueur sans équipe, ou un plafond déjà atteint. Zéro veut dire « aucune
+ * raison » — et l'événement n'est alors pas même candidat.
+ */
+function raisonDeChanger(ctx) {
+  let w = 0;
+  if (ctx.gameState.popularity < 45) w += 3;
+  if (!ctx.hasTeam) w += 2.5;
+  if (ctx.rating > weightedCeiling(ctx.person, ctx.game) - 3) w += 2;
+  return w;
+}
+
 export const worldEvents = [
   // --- CHAÎNE RIVALITÉ -------------------------------------------------
   {
@@ -375,23 +388,28 @@ export const worldEvents = [
     tags: ['jeu', 'transfert'],
     cooldown: 90,
     // On ne réapprend pas un jeu entier pendant qu'on se remet d'une rupture
-    // (étape 7F). C'est la SEULE restriction ajoutée : l'éligibilité d'un joueur
-    // en équipe n'est que de huit événements, et en retirer davantage creuserait
-    // des semaines vides. Le reste de la contextualisation passe par les poids,
-    // qui rendent pertinent ce qui se déclenche sans réduire ce qui est possible.
+    // (étape 7F).
+    //
+    // LA RAISON EST REMONTÉE DANS LA CONDITION (étape 10A)
+    //
+    // L'étape 7F avait délibérément gardé cette condition large, et le disait :
+    // « l'éligibilité d'un joueur en équipe n'est que de huit événements, et en
+    // retirer davantage creuserait des semaines vides ». C'était juste à
+    // l'époque. Ça ne l'est plus : le catalogue est passé de 37 à 63
+    // événements tirables, et cette condition-ci était devenue le problème
+    // qu'elle protégeait.
+    //
+    // Mesuré : `game_switch_offer` était éligible dans la MOITIÉ de tous les
+    // tirages quand aucun autre ne dépassait 12 %, et tombait semaine 30 dans
+    // neuf carrières sur douze. Un joueur qui entamait deux parties voyait la
+    // même scène au même moment. Un poids nul ne l'aurait pas déclenché — mais
+    // un candidat permanent occupe une place que rien d'autre ne peut prendre.
     condition: (ctx) =>
       ctx.person.status !== STATUS.RETIRED &&
       ctx.career.counters.weeks > 30 &&
-      !ctx.situation.enConvalescence,
-    weight: (ctx) => {
-      // On ne propose un changement de jeu que s'il y a une raison :
-      // scène en déclin, plafond atteint, ou absence d'équipe.
-      let w = 0;
-      if (ctx.gameState.popularity < 45) w += 3;
-      if (!ctx.hasTeam) w += 2.5;
-      if (ctx.rating > weightedCeiling(ctx.person, ctx.game) - 3) w += 2;
-      return w * ctx.difficulty.opportunity;
-    },
+      !ctx.situation.enConvalescence &&
+      raisonDeChanger(ctx) > 0,
+    weight: (ctx) => raisonDeChanger(ctx) * ctx.difficulty.opportunity,
     title: 'Une autre scène',
     text: (ctx) => {
       const target = pickSwitchTarget(ctx);

@@ -283,6 +283,21 @@ d'inscription »).
   Corrigé, sur 30 carrières menées par un joueur qui se pilote : potentiel
   médian 73,3 → 80,3, pic de niveau 69,7 → 73,8, rang parmi ses contemporains
   46ᵉ → 26ᵉ, titres par carrière 1,20 → 2,10.
+- **Deux carrières ne traversent pas les mêmes situations** : signalé par un
+  joueur qui en avait entamé deux, et mesuré — le moteur n'avait qu'UN candidat
+  éligible dans 40 % des tirages, et le gagnant emportait 100 % du poids. Il ne
+  choisissait pas, il jouait le seul événement disponible. Un événement était
+  même éligible dans la moitié des tirages parce que sa condition n'était qu'un
+  minuteur. Le catalogue est passé de 37 à 67 événements tirables, dont trente
+  scènes ordinaires — très souvent possibles, faiblement pesantes — qui
+  remplissent les semaines sans écraser les moments qui comptent. Mesuré après :
+  5 à 7 candidats en médiane, 17 % de tirages à candidat unique, et de la
+  troisième décision à la sixième, 6 à 10 événements différents sur dix parties.
+- **Une décision tient dans un écran** : sur un téléphone, l'en-tête occupait un
+  écran et demi avant qu'on atteigne le jeu, et le rapport de la semaine se
+  trouvait sous la ligne de flottaison. Le détail est désormais repliable — rien
+  n'est supprimé, tout est à un geste — et la boucle presser / lire / presser
+  tient sans défiler : le bouton passe de 722 px à 368 px sur un écran de 844.
 - **Sauvegarde locale** compacte, versionnée, avec reprise automatique.
 
 ## Ce qui n'existe pas encore

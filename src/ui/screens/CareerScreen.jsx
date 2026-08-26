@@ -91,9 +91,60 @@ export default function CareerScreen() {
   );
 }
 
+/**
+ * L'en-tête, repliable (étape 10B).
+ *
+ * LE DÉFAUT, SIGNALÉ PAR UN JOUEUR
+ * --------------------------------
+ * « Sur le téléphone c'est un peu fouillis, y a beaucoup d'informations donc tu
+ * dois pas mal descendre. »
+ *
+ * Mesuré sur un écran de 390 × 844 : l'onglet « semaine » faisait 2,5 écrans de
+ * haut, et l'en-tête à lui seul en occupait un et demi. Le bouton « Semaine
+ * suivante » arrivait à 722 px, au ras du bord, et le rapport de la semaine —
+ * ce qui vient réellement de se passer — se trouvait sous la ligne de
+ * flottaison. La boucle du jeu était donc : descendre pour cliquer, descendre
+ * pour lire, remonter pour recliquer.
+ *
+ * CE QUI EST FAIT, ET CE QUI NE L'EST PAS
+ * ---------------------------------------
+ * Rien n'est supprimé — le joueur l'a demandé explicitement et il a raison :
+ * ces chiffres servent. Le détail est simplement replié derrière une ligne qui
+ * garde l'essentiel visible en permanence : qui vous êtes, quand, à quel niveau
+ * vous jouez aujourd'hui. Un geste l'ouvre, et le choix est mémorisé.
+ *
+ * Replié par défaut sur écran étroit seulement : sur un grand écran, tout tient
+ * sans gêner personne.
+ */
+const CLE_ENTETE = 'circuit:entete-ouverte';
+
+function entetePreferee() {
+  try {
+    const v = localStorage.getItem(CLE_ENTETE);
+    if (v === 'oui') return true;
+    if (v === 'non') return false;
+  } catch {
+    // Stockage indisponible (navigation privée) : on retombe sur la largeur.
+  }
+  try {
+    return window.matchMedia('(min-width: 720px)').matches;
+  } catch {
+    return true;
+  }
+}
+
 function HeaderPanel({ head, session }) {
+  const [ouvert, setOuvert] = useState(entetePreferee);
+
+  function basculer() {
+    setOuvert((v) => {
+      try { localStorage.setItem(CLE_ENTETE, v ? 'non' : 'oui'); } catch { /* sans mémoire */ }
+      return !v;
+    });
+  }
+
   return (
-    <header className="header">
+    <header className={`header ${ouvert ? '' : 'replie'}`}>
       <div className="header-main">
         <div>
           <h1>{head.nick}</h1>
@@ -108,6 +159,24 @@ function HeaderPanel({ head, session }) {
         </div>
       </div>
 
+      {/* Replié, l'en-tête garde ce qu'on regarde à chaque semaine : le niveau
+          du jour, l'équipe, la forme. Le reste est à un geste. */}
+      {!ouvert && (
+        <div className="header-resume">
+          <span>
+            <strong>{head.ratingDuJour ?? head.rating}</strong> de niveau aujourd’hui
+          </span>
+          <span className="muted">{head.team ?? 'Sans équipe'}</span>
+          <span className="muted">Moral {head.morale} · Fatigue {head.fatigue}</span>
+        </div>
+      )}
+
+      <button className="entete-bascule" onClick={basculer} aria-expanded={ouvert}>
+        {ouvert ? 'Masquer le détail' : 'Voir le détail'}
+      </button>
+
+      {ouvert && (
+      <>
       <div className="header-grid">
         <Stat label="Jeu" value={head.gameShort} sub={`patch ${head.patch}`} />
         <Stat label="Équipe" value={head.team ?? 'Sans équipe'} sub={head.teamTier ?? head.status} />
@@ -137,6 +206,8 @@ function HeaderPanel({ head, session }) {
       </div>
 
       <ChargeBloc session={session} />
+      </>
+      )}
     </header>
   );
 }

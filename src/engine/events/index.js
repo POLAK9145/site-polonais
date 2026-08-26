@@ -9,6 +9,8 @@ import { earlyCareerEvents } from './defs/earlyCareer.js';
 import { teamLifeEvents } from './defs/teamLife.js';
 import { lifeAndMediaEvents } from './defs/lifeAndMedia.js';
 import { worldEvents } from './defs/worldEvents.js';
+import { dailyLifeEvents } from './defs/dailyLife.js';
+import { competitionLifeEvents } from './defs/competitionLife.js';
 
 let initialized = false;
 
@@ -19,6 +21,8 @@ export function initEvents({ force = false } = {}) {
   registerEvents(teamLifeEvents);
   registerEvents(lifeAndMediaEvents);
   registerEvents(worldEvents);
+  registerEvents(dailyLifeEvents);
+  registerEvents(competitionLifeEvents);
   registerDeferredHandlers();
   initialized = true;
   return allEvents().length;
