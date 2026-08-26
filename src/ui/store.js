@@ -40,6 +40,7 @@ const state = {
   archiveError: null,
   recordsBattus: [],
   compare: null,
+  replaySeed: null,
   notice: null,
   autosaveError: null,
 };
@@ -282,6 +283,29 @@ export const actions = {
 
   closeComparison() {
     state.compare = null;
+    notify();
+  },
+
+  /**
+   * Rejouer le monde d'une carrière terminée (§39, étape 9N).
+   *
+   * C'est le « et si » honnête : la graine est conservée dans la fiche, donc
+   * le monde renaît identique — mêmes équipes, mêmes joueurs, mêmes métas — et
+   * les décisions repartent de zéro. On ne rejoue pas depuis un point de la
+   * carrière : le moteur ne conserve pas ses états intermédiaires, et prétendre
+   * le contraire serait mentir sur ce qui est rejoué.
+   */
+  replayWorld(id) {
+    const fiche = listArchive().find((f) => f.id === id);
+    if (!fiche) return null;
+    state.replaySeed = fiche.seed;
+    state.screen = 'create';
+    notify();
+    return fiche.seed;
+  },
+
+  clearReplaySeed() {
+    state.replaySeed = null;
     notify();
   },
 

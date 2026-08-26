@@ -124,12 +124,20 @@ function Fiche({ f, choisi, onClick }) {
         {formatMoney(f.gains)} · {formatFollowers(f.abonnes)} abonnés · {f.jeux.join(', ')}
       </p>
 
-      <button
-        className="ghost danger small"
-        onClick={(e) => { e.stopPropagation(); actions.deleteArchived(f.id); }}
-      >
-        Retirer
-      </button>
+      <div className="fiche-actions">
+        <button
+          className="ghost small"
+          onClick={(e) => { e.stopPropagation(); actions.replayWorld(f.id); }}
+        >
+          Rejouer ce monde
+        </button>
+        <button
+          className="ghost danger small"
+          onClick={(e) => { e.stopPropagation(); actions.deleteArchived(f.id); }}
+        >
+          Retirer
+        </button>
+      </div>
     </section>
   );
 }

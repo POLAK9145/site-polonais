@@ -263,18 +263,33 @@ d'inscription »).
   traversée du désert, devenir une figure controversée. Les objectifs qu'on vise
   restent visibles : un jeu de carrière doit dire vers quoi on peut aller. Seul
   leur nombre est affiché, jamais leur liste.
+- **Sept départs prédéfinis et un défi du jour** : chacun pose un problème
+  différent — la densité de talent d'une scène, l'absence de structures, l'âge,
+  l'argent — et sa promesse se vérifie dans les chiffres du moteur, pas dans son
+  titre. Ce ne sont pas des histoires écrites d'avance : la suite reste
+  entièrement simulée, et chaque réglage reste ajustable après coup. Le défi du
+  jour dérive sa graine de la date : tout le monde joue le même monde le même
+  jour, sans que rien ne soit stocké.
+- **Rejouer un monde connu** : une carrière archivée conserve sa graine, donc
+  son monde peut renaître à l'identique — mêmes équipes, mêmes joueurs, mêmes
+  métas — pour y mener une autre carrière. C'est le « et si » honnête : on ne
+  reprend pas une partie à un instant donné, parce que le moteur ne conserve
+  pas ses états intermédiaires et que prétendre le contraire serait mentir sur
+  ce qui est rejoué.
 - **Sauvegarde locale** compacte, versionnée, avec reprise automatique.
 
 ## Ce qui n'existe pas encore
 
 Listé explicitement pour ne rien prétendre (§83) :
 
+- **Un classement en ligne** pour le défi du jour. Ce n'est pas un manque de
+  temps : le jeu est hors ligne par construction et le restera. Le défi partage
+  un monde, pas un tableau d'honneur — deux joueurs peuvent comparer leurs
+  carrières en se disant la graine.
+
 - **Modes post-carrière jouables** (coach, manager, propriétaire). La page
   Legacy liste les reconversions que votre profil rendrait crédibles, mais ce
   ne sont pas encore des modes de jeu.
-- **Défi quotidien et classements** (§37) : le déterminisme par seed rend le
-  mode possible, il n'est pas construit.
-- **Scénarios prédéfinis** (§38) et **mode « what if »** (§39).
 - **Une échelle de risque graduée sur les choix** (du type « sûr / puissant /
   légendaire »). Écartée par la mesure, pas par manque de temps : rejoué 14 fois
   depuis un état identique sur 12 occasions, un choix risqué ne produit pas plus

@@ -1124,3 +1124,9 @@ button.ghost.small { font-size: 0.78rem; padding: 3px 8px; margin-top: 6px; }
 /* Succès cachés (§35, étape 9M). */
 .secrets { font-size: 0.9rem; margin: 0 0 10px; color: #b9a4e8; }
 .secrets.trouve { color: #7fd6a1; }
+
+/* Départs prédéfinis et rejeu (§37/§38/§39, étape 9N). */
+.list-item .scenario-defi { font-size: 0.78rem; color: #8fa4c4; margin-top: 3px; }
+.list-item.defi { border-left: 3px solid #d9c27a; margin-bottom: 10px; }
+.rejeu { border-left: 3px solid #5aa0ff; }
+.fiche-actions { display: flex; gap: 8px; margin-top: 6px; }

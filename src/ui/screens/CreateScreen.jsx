@@ -2,10 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { GAMES } from '../../data/games.js';
 import { REGIONS } from '../../data/regions.js';
 import { ORIGINS, FAMILY_PROFILES } from '../../data/origins.js';
+import { SCENARIOS, dailyScenario } from '../../data/scenarios.js';
 import { DIFFICULTIES } from '../../engine/career.js';
 import { RNG } from '../../engine/rng.js';
 import { generatePersonName, generateNickname } from '../../engine/names.js';
-import { actions } from '../store.js';
+import { actions, useStore } from '../store.js';
 
 /**
  * Création de personnage (§4).
@@ -14,7 +15,10 @@ import { actions } from '../store.js';
  * partir des mêmes données que le moteur.
  */
 export default function CreateScreen() {
-  const [seedInput, setSeedInput] = useState('');
+  const etat = useStore();
+  // Arrivé ici depuis « rejouer ce monde » : la graine est déjà connue
+  // (§39, étape 9N).
+  const [seedInput, setSeedInput] = useState(etat.replaySeed ?? '');
   const [regionId, setRegionId] = useState('weu');
   const [gameId, setGameId] = useState('vanguard');
   const [originId, setOriginId] = useState('child_competitor');
@@ -29,6 +33,8 @@ export default function CreateScreen() {
   // saisissable et régénère toujours le même univers.
   const [identity, setIdentity] = useState(() => rollIdentity('weu', Math.floor(Math.random() * 1e9)));
   const [age, setAge] = useState(17);
+  const [scenarioActif, setScenarioActif] = useState(null);
+  const defi = useMemo(() => dailyScenario(), []);
 
   const origin = ORIGINS.find((o) => o.id === originId);
   const family = FAMILY_PROFILES.find((f) => f.id === familyId);
@@ -44,6 +50,23 @@ export default function CreateScreen() {
       .filter(([, v]) => v !== 0)
       .sort((a, b) => b[1] - a[1]);
   }, [origin]);
+
+  /**
+   * Applique un départ prédéfini (§38, étape 9N). Rien n'est verrouillé
+   * ensuite : le scénario positionne les curseurs, le joueur reste libre de
+   * les bouger. Un scénario qu'on ne peut pas ajuster serait un couloir.
+   */
+  function appliquerScenario(sc) {
+    setRegionId(sc.regionId);
+    setGameId(sc.gameId);
+    setOriginId(sc.originId);
+    setFamilyId(sc.familyId);
+    setDifficulty(sc.difficulty);
+    setAge(sc.age);
+    setSeedInput(sc.seed ?? '');
+    reroll(sc.regionId);
+    setScenarioActif(sc.id);
+  }
 
   function reroll(nextRegion = regionId) {
     setIdentity(rollIdentity(nextRegion, Math.floor(Math.random() * 1e9)));
@@ -83,6 +106,55 @@ export default function CreateScreen() {
         votre marge de progression, votre argent et les situations que vous
         rencontrerez.
       </p>
+
+      {etat.replaySeed && (
+        <section className="card rejeu">
+          <h2>Vous rejouez un monde connu</h2>
+          <p className="muted">
+            Graine <strong>{etat.replaySeed}</strong> — mêmes équipes, mêmes
+            joueurs, mêmes métas et mêmes patches que la carrière archivée. Seules
+            vos décisions changent. Le personnage, lui, est à refaire : c'est une
+            autre carrière dans le même monde, pas une reprise de l'ancienne.
+          </p>
+          <button className="ghost" onClick={() => { actions.clearReplaySeed(); setSeedInput(''); }}>
+            Repartir d’un monde neuf
+          </button>
+        </section>
+      )}
+
+      <section className="card">
+        <h2>Départs prédéfinis</h2>
+        <p className="hint">
+          Chaque départ pose un problème différent — la concurrence, l’absence
+          de structures, l’âge, l’argent. Ce ne sont pas des histoires écrites
+          d’avance : la suite reste entièrement simulée, et vous pouvez ajuster
+          chaque réglage ensuite.
+        </p>
+
+        <button
+          className={`list-item defi ${scenarioActif === 'defi' ? 'active' : ''}`}
+          onClick={() => appliquerScenario({ ...defi, id: 'defi' })}
+        >
+          <strong>Défi du jour — {defi.label}</strong>
+          <span className="muted">
+            Même monde pour tout le monde aujourd’hui ({defi.dateLabel}). {defi.defi}
+          </span>
+        </button>
+
+        <div className="list">
+          {SCENARIOS.map((sc) => (
+            <button
+              key={sc.id}
+              className={`list-item ${scenarioActif === sc.id ? 'active' : ''}`}
+              onClick={() => appliquerScenario(sc)}
+            >
+              <strong>{sc.label}</strong>
+              <span className="muted">{sc.desc}</span>
+              <span className="scenario-defi">{sc.defi}</span>
+            </button>
+          ))}
+        </div>
+      </section>
 
       <section className="card">
         <h2>Identité</h2>
