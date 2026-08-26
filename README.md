@@ -276,6 +276,13 @@ d'inscription »).
   reprend pas une partie à un instant donné, parce que le moteur ne conserve
   pas ses états intermédiaires et que prétendre le contraire serait mentir sur
   ce qui est rejoué.
+- **Le joueur et le monde partagent leurs formules** : la marge de progression
+  restante à un âge donné se calcule d'une seule façon pour tout le monde. Le
+  joueur avait la sienne, strictement plus sévère et sans raison documentée, et
+  naissait mesurablement moins doué que les adolescents de son propre monde.
+  Corrigé, sur 30 carrières menées par un joueur qui se pilote : potentiel
+  médian 73,3 → 80,3, pic de niveau 69,7 → 73,8, rang parmi ses contemporains
+  46ᵉ → 26ᵉ, titres par carrière 1,20 → 2,10.
 - **Sauvegarde locale** compacte, versionnée, avec reprise automatique.
 
 ## Ce qui n'existe pas encore
@@ -299,24 +306,6 @@ Listé explicitement pour ne rien prétendre (§83) :
   est plat, autour de 25 %. Graduer une étiquette sur une probabilité plate
   serait de la décoration, et une décoration présentée comme une simulation est
   un mensonge (§83).
-- **Le joueur naît moins doué que les adolescents de son monde.** Le joueur et
-  le monde calculent la même grandeur — la marge de progression restante à un
-  âge donné — avec deux formules différentes, et celle du joueur est la plus
-  sévère : `clamp(23 - âge, 0, 8)` donne 5 à 18 ans là où le monde donne 11,8,
-  et tombe à 0 dès 23 ans. Le plafond d'un personnage valant son niveau actuel
-  plus cette marge, le joueur est doublement pénalisé. Mesuré à la création sur
-  30 mondes, avant que rien n'ait été joué : potentiel médian 76,8 pour le
-  joueur contre 88,4 pour les PNJ de moins de 20 ans, et **aucun joueur sur
-  trente** ne pouvait naître dans le dernier décile de sa propre génération.
-  Aucune note de conception ne demande cet écart.
-
-  La correction a été écrite et mesurée, puis **retirée** : elle relève le
-  potentiel médian de 71 à 78, mais casse trois tests dont deux demandent de
-  recalibrer des systèmes validés (les titres de presse de l'étape 9A, la
-  divergence des carrières à talent égal). Livrer un changement d'équilibre au
-  prix d'une cascade de recalibrages demande une raison plus forte que la
-  cohérence des formules.
-
 Ces manques correspondent aux phases 5 et 6 du plan de développement. La
 priorité a été donnée à la profondeur des systèmes existants plutôt qu'au
 nombre de fonctionnalités (§77, §87).

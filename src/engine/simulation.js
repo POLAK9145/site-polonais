@@ -17,6 +17,7 @@ import {
   baseRating,
   age as personAge,
   effectiveRating,
+  remainingPotential,
 } from './person.js';
 import { createOrg, createTeam } from './org.js';
 import {
@@ -130,7 +131,12 @@ export function createSession(config) {
 function createPlayerPerson(world, rng, player) {
   // Commencer jeune laisse mécaniquement plus de marge de progression : c'est
   // le vrai coût d'un départ tardif (§4, origine « late_bloomer »).
-  const youthBonus = clamp(23 - (player.age ?? 18), 0, 8);
+  // Le joueur partageait la grandeur du monde mais pas sa formule (étape 9O) :
+  // la sienne était strictement plus sévère, sans raison documentée. Un joueur
+  // de 18 ans n'a pas consommé plus de marge qu'un PNJ de 18 ans. Le tier
+  // neutre est 3 : le joueur n'a pas encore de niveau reconnu, il ne reçoit ni
+  // la prime des joueurs installés, ni la pénalité du bas de la pyramide.
+  const youthBonus = remainingPotential(player.age ?? 18);
   const person = createPerson(rng, {
     regionId: player.regionId,
     age: player.age,

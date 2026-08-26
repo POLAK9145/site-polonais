@@ -13,7 +13,7 @@
 import { RNG, clamp } from './rng.js';
 import { GAMES, GAMES_BY_ID } from '../data/games.js';
 import { REGIONS } from '../data/regions.js';
-import { createPerson, STATUS, resetPersonCounter } from './person.js';
+import { createPerson, STATUS, resetPersonCounter, remainingPotential } from './person.js';
 import { createOrg, createTeam, resetOrgCounters } from './org.js';
 import { addToRoster, assignRoles, computeSynergyTarget, recordStint } from './team.js';
 import { createGameState } from './meta.js';
@@ -186,7 +186,7 @@ function spawnPlayer(world, rng, { game, regionId, tier, now, ageRange }) {
   const level = rng.gaussClamped(mean, sd, 30, 96);
   const age = rng.float(ageRange[0], ageRange[1]);
   // Les joueurs de haut niveau ont déjà consommé une partie de leur marge.
-  const potentialBias = clamp(28 - age * 0.9 + (tier - 3) * 2, -8, 16);
+  const potentialBias = remainingPotential(age, tier);
 
   const p = createPerson(rng, {
     regionId,

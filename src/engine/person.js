@@ -59,6 +59,28 @@ export function resetPersonCounter() {
   personCounter = 0;
 }
 
+/**
+ * La marge de progression qu'il reste à un âge donné (étape 9O).
+ *
+ * Le monde la calcule à partir de l'âge : à 18 ans il reste beaucoup à
+ * prendre, à 28 presque plus. Le terme de tier dit qu'un joueur déjà installé
+ * haut a plus de marge qu'un joueur de circuit amateur du même âge.
+ *
+ * Cette fonction existe pour qu'il n'y ait qu'UNE formule. Le joueur avait la
+ * sienne, plus sévère, sans raison documentée : `clamp(23 - âge, 0, 8)`, soit 5
+ * à 18 ans là où le monde donne 11,8, et 0 dès 23 ans. Le plafond d'un
+ * personnage valant son niveau actuel plus cette marge, le joueur était
+ * doublement pénalisé — ancrage plus bas ET marge plus courte.
+ *
+ * Mesuré à la création sur 30 mondes, avant que rien n'ait été joué :
+ * potentiel médian 76,8 pour le joueur contre 88,4 pour les PNJ de moins de
+ * 20 ans, et aucun joueur sur trente ne pouvait naître dans le dernier décile
+ * de sa propre génération.
+ */
+export function remainingPotential(age, tier = 3) {
+  return clamp(28 - age * 0.9 + (tier - 3) * 2, -8, 16);
+}
+
 export function createPerson(rng, opts = {}) {
   const {
     regionId = 'weu',
